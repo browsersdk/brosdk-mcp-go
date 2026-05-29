@@ -1,0 +1,20 @@
+# local config (contains credentials, never commit)
+config.local.json
+
+# build output
+brosdk-mcp.exe
+brosdk-mcp
+.brosdk
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.workbuddy
+libs
+
+# Windows reserved device names (accidental redirect targets)
+nul
+dev/null

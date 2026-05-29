@@ -1,0 +1,8 @@
+{
+    "apiKey": "your-customer-id-here",
+    "userSig": "",
+    "workDir": "./.brosdk",
+    "port": 5811,
+    "sdkApiUrl": "",
+    "debug": false
+}
