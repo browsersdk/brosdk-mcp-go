@@ -84,12 +84,17 @@ main{flex:1;display:grid;grid-template-columns:280px 1fr;grid-template-rows:1fr 
 /* ── SSE panel (bottom) ── */
 #sse-panel{grid-column:2}
 #sse-log{flex:1;overflow:auto;font-family:var(--mono);font-size:11px;padding:4px 0}
-.sse-entry{padding:3px 12px;border-bottom:1px solid rgba(48,54,61,.5);display:flex;gap:8px;align-items:flex-start}
-.sse-entry .time{color:var(--text2);flex-shrink:0}
-.sse-entry .event-type{color:var(--yellow);flex-shrink:0;font-weight:600;min-width:80px}
-.sse-entry .event-data{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sse-entry:hover .event-data{white-space:pre-wrap}
-.sse-entry .event-data.collapsed{max-height:1.4em}
+.sse-entry{border-bottom:1px solid rgba(48,54,61,.5)}
+.sse-entry .sse-header{padding:3px 12px;display:flex;gap:8px;align-items:flex-start;cursor:pointer;transition:background .1s}
+.sse-entry .sse-header:hover{background:var(--bg3)}
+.sse-entry .time{color:var(--text2);flex-shrink:0;font-family:var(--mono);font-size:11px}
+.sse-entry .event-type{font-size:11px;color:var(--yellow);flex-shrink:0;font-weight:600;min-width:80px}
+.sse-entry .event-preview{font-size:11px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.sse-entry .event-expand{font-size:10px;color:var(--text2);flex-shrink:0;transition:transform .15s}
+.sse-entry.open .event-expand{transform:rotate(180deg)}
+.sse-entry .sse-detail{display:none;padding:0 12px 8px;font-family:var(--mono);font-size:11px;color:var(--text);overflow:auto;max-height:300px}
+.sse-entry .sse-detail pre{margin:0;white-space:pre-wrap;word-break:break-all;background:var(--bg);padding:8px;border-radius:4px}
+.sse-entry.open .sse-detail{display:block}
 /* ── JSON syntax highlighting ── */
 .json-key{color:var(--accent)}
 .json-string{color:#a5d6ff}
@@ -144,7 +149,10 @@ main{flex:1;display:grid;grid-template-columns:280px 1fr;grid-template-rows:1fr 
           <button class="btn primary" id="btn-call">&#x25B6; Call Tool</button>
         </div>
       </div>
-      <div class="panel-header" style="margin:0 -12px;padding-left:0;border-top:1px solid var(--border)">&#x1F4C3; History</div>
+      <div class="panel-header" style="margin:0 -12px;padding-left:0;border-top:1px solid var(--border);justify-content:space-between">
+        <span>&#x1F4C3; History</span>
+        <button class="btn" id="btn-clear-history" style="font-size:10px;padding:2px 8px">Clear</button>
+      </div>
       <div id="call-result"><div style="color:var(--text2);font-size:12px;padding:8px 0">No calls yet. Select a tool and click "Call Tool".</div></div>
     </div>
   </div>
@@ -236,13 +244,26 @@ function appendSSE(type, data) {
   const ph = sseLog.querySelector(':scope > div:only-child');
   if (ph && ph.style && ph.style.color === 'rgb(139, 148, 158)') ph.remove();
 
+  // Generate a one-line preview (first 120 chars)
+  const preview = data.length > 120 ? data.slice(0,120).replace(/\n/g,' ') + '...' : data;
+
   const entry = document.createElement('div');
   entry.className = 'sse-entry';
-  entry.innerHTML = '<span class="time">' + now() + '</span>' +
-    '<span class="event-type">' + esc(type) + '</span>' +
-    '<span class="event-data collapsed">' + esc(data) + '</span>';
-  entry.addEventListener('click', () => {
-    entry.querySelector('.event-data').classList.toggle('collapsed');
+  entry.innerHTML =
+    '<div class="sse-header">' +
+      '<span class="time">' + now() + '</span>' +
+      '<span class="event-type">' + esc(type) + '</span>' +
+      '<span class="event-preview">' + esc(preview) + '</span>' +
+      '<span class="event-expand">&#x25BC;</span>' +
+    '</div>' +
+    '<div class="sse-detail"><pre>' + esc(data) + '</pre></div>';
+
+  entry.querySelector('.sse-header').addEventListener('click', () => {
+    // Close all other open entries
+    sseLog.querySelectorAll('.sse-entry.open').forEach(el => {
+      if (el !== entry) el.classList.remove('open');
+    });
+    entry.classList.toggle('open');
   });
   sseLog.appendChild(entry);
   sseLog.scrollTop = sseLog.scrollHeight;
@@ -415,6 +436,10 @@ $('btn-clear-sse').addEventListener('click', () => {
   sseLog.innerHTML = '';
   eventCount = 0;
   eventCountEl.textContent = '0 events';
+});
+$('btn-clear-history').addEventListener('click', () => {
+  callHistory = [];
+  renderHistory();
 });
 
 // Ctrl+Enter to call
