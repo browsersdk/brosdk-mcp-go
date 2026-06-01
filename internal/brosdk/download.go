@@ -9,7 +9,6 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -48,48 +47,91 @@ func AssetFile() string {
 }
 
 const (
-	ghReleasesAPI = "https://api.github.com/repos/browsersdk/brosdk/releases/latest"
+	ghReleasesLatest  = "https://github.com/browsersdk/brosdk/releases/latest"
 	downloadUserAgent = "brosdk-mcp-go/0.1.0"
 )
 
-// GitHubRelease represents the relevant fields from the GitHub Releases API response.
+// GitHubRelease holds information about a GitHub release.
 type GitHubRelease struct {
-	TagName string          `json:"tag_name"`
-	Assets  []GitHubAsset   `json:"assets"`
+	TagName string
+	Assets  []GitHubAsset
 }
 
-// GitHubAsset is one downloaded file in a release.
+// GitHubAsset is one downloadable file in a release.
 type GitHubAsset struct {
-	Name               string `json:"name"`
-	BrowserDownloadURL string `json:"browser_download_url"`
-	Size               int64  `json:"size"`
+	Name               string
+	BrowserDownloadURL string
+	Size               int64
 }
 
-// FindLatestRelease queries the GitHub Releases API and returns the latest release.
+// FindLatestRelease discovers the latest release version by following the
+// GitHub /releases/latest redirect (no API, no rate limit).  It then
+// constructs the download URL using the known asset naming convention:
+//
+//	brosdk-{version}-{platform}.{ext}
 func FindLatestRelease() (*GitHubRelease, error) {
-	req, err := http.NewRequest("GET", ghReleasesAPI, nil)
+	// Use a client that does NOT follow redirects — we only need the Location header.
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	req, err := http.NewRequest("HEAD", ghReleasesLatest, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", downloadUserAgent)
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
-	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("github api request: %w", err)
+		return nil, fmt.Errorf("github releases page request: %w", err)
 	}
-	defer resp.Body.Close()
+	resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("github api returned status %d", resp.StatusCode)
+	if resp.StatusCode != 302 {
+		return nil, fmt.Errorf("unexpected status %d from %s", resp.StatusCode, ghReleasesLatest)
 	}
 
-	var rel GitHubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
-		return nil, fmt.Errorf("decode release json: %w", err)
+	// Location: https://github.com/browsersdk/brosdk/releases/tag/v1.0.0.8
+	location := resp.Header.Get("Location")
+	if location == "" {
+		return nil, fmt.Errorf("no Location header in redirect from %s", ghReleasesLatest)
 	}
-	return &rel, nil
+
+	// Extract tag: "v1.0.0.8"
+	idx := strings.LastIndex(location, "/")
+	if idx < 0 {
+		return nil, fmt.Errorf("unexpected Location format: %s", location)
+	}
+	tag := location[idx+1:]
+
+	// Strip leading "v": "1.0.0.8"
+	version := strings.TrimPrefix(tag, "v")
+	if version == tag {
+		// tag didn't have a "v" prefix — use as-is
+		version = tag
+	}
+
+	// Build download URL with known naming convention:
+	//   https://github.com/browsersdk/brosdk/releases/download/v1.0.0.8/brosdk-1.0.0.8-windows-x64.zip
+	platform := PlatformKey()
+	ext := ".zip"
+	if runtime.GOOS == "darwin" {
+		ext = ".tar.gz"
+	}
+
+	assetName := fmt.Sprintf("brosdk-%s-%s%s", version, platform, ext)
+	downloadURL := fmt.Sprintf("https://github.com/browsersdk/brosdk/releases/download/%s/%s", tag, assetName)
+
+	return &GitHubRelease{
+		TagName: tag,
+		Assets: []GitHubAsset{{
+			Name:               assetName,
+			BrowserDownloadURL: downloadURL,
+		}},
+	}, nil
 }
 
 // FindAsset returns the asset matching the current platform in the release.
@@ -312,8 +354,11 @@ func EnsureLibrary(explicitPath string) (string, error) {
 		filepath.Join("libs", platform, assetFile),
 	}
 
-	for _, p := range searchPaths {
+	for i, p := range searchPaths {
 		if _, err := os.Stat(p); err == nil {
+			if i > 0 {
+				fmt.Printf("[brosdk] library found at %s\n", p)
+			}
 			return p, nil
 		}
 	}
@@ -323,12 +368,15 @@ func EnsureLibrary(explicitPath string) (string, error) {
 
 	rel, err := FindLatestRelease()
 	if err != nil {
-		return "", fmt.Errorf("find latest release: %w", err)
+		return "", fmt.Errorf("find latest release: %w\n"+
+			"  hint: manually download from https://github.com/browsersdk/brosdk/releases/latest\n"+
+			"  and extract %s to libs/%s/", err, assetFile, platform)
 	}
 
 	asset := FindAsset(rel, platform)
 	if asset == nil {
-		return "", fmt.Errorf("no release asset found for platform %q in %s", platform, rel.TagName)
+		return "", fmt.Errorf("no release asset found for platform %q in %s\n"+
+			"  hint: check https://github.com/browsersdk/brosdk/releases/tag/%s for available assets", platform, rel.TagName, rel.TagName)
 	}
 
 	fmt.Printf("[brosdk] latest release: %s (%d assets)\n", rel.TagName, len(rel.Assets))

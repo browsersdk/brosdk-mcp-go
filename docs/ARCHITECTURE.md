@@ -104,7 +104,7 @@ Native result_callback (C)
 **其他平台**（`native_unsupported.go`，`//go:build !windows && !darwin`）：返回错误桩。
 
 **自动下载**（`download.go`，平台无关）：
-- 首次运行无本地库时，自动调用 GitHub Releases API 获取最新 brosdk 版本
+- 首次运行无本地库时，通过 HTTP redirect（`/releases/latest` → `/releases/tag/vX.Y.Z`）解析版本号，按命名约定构造下载 URL — 无需 GitHub API、无需 token、无速率限制
 - 下载时控制台输出实时进度（百分比 + 大小）
 - 解压到 `libs/<platform>/` 目录
 - 平台标签：`windows-x64` / `darwin-arm64`
