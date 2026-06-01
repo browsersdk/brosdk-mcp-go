@@ -49,7 +49,8 @@ brosdk-mcp-go/
 │   ├── config/
 │   │   └── config.go           # config.local.json → config.json 加载
 │   ├── mcp/
-│   │   └── server.go           # SSE server + session 管理 + JSON-RPC dispatch
+│   │   ├── server.go           # SSE server + session 管理 + JSON-RPC dispatch
+│   │   └── inspector.go        # 内嵌 MCP Inspector Web UI（自包含 HTML）
 │   └── tools/
 │       └── tools.go            # 44 Tool 定义 + handler dispatch
 ```
@@ -57,8 +58,9 @@ brosdk-mcp-go/
 ## MCP Transport：仅 SSE
 
 ```
-GET  /sse      → 建立 SSE 长连接，推送 endpoint event
-POST /message  → 客户端发送 JSON-RPC 请求
+GET  /inspector  → 内嵌 MCP Inspector Web UI（工具浏览 + 调用 + SSE 事件）
+GET  /sse        → 建立 SSE 长连接，推送 endpoint event
+POST /message    → 客户端发送 JSON-RPC 请求
 ```
 
 流程：

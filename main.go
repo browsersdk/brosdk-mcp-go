@@ -115,6 +115,7 @@ func main() {
 	}()
 
 	log.Printf("MCP SSE server listening on %s", *addr)
+	log.Printf("  Inspector    : http://localhost%s/inspector", *addr)
 	log.Printf("  SSE endpoint : http://localhost%s/sse", *addr)
 	log.Printf("  POST endpoint: http://localhost%s/message", *addr)
 	log.Printf("  Health check : http://localhost%s/health", *addr)

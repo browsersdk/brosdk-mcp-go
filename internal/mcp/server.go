@@ -2,8 +2,9 @@
 //
 // Endpoints:
 //
-//	GET  /sse      – opens an SSE stream; server sends "endpoint" event first
-//	POST /message  – client sends JSON-RPC 2.0 requests here
+//	GET  /inspector – embedded MCP Inspector web UI
+//	GET  /sse       – opens an SSE stream; server sends "endpoint" event first
+//	POST /message   – client sends JSON-RPC 2.0 requests here
 package mcp
 
 import (
@@ -97,10 +98,11 @@ func NewServer(info ServerInfo, tools []ToolDef, handler Handler) *Server {
 	}
 }
 
-// Register registers the SSE, message, and health handlers on mux.
+// Register registers the SSE, message, inspector, and health handlers on mux.
 func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/sse", s.handleSSE)
 	mux.HandleFunc("/message", s.handleMessage)
+	mux.HandleFunc("/inspector", s.handleInspector)
 	mux.HandleFunc("/health", s.handleHealth)
 }
 
