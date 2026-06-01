@@ -174,6 +174,19 @@ func All() []mcp.ToolDef {
 			}`),
 		},
 		{
+			Name:        "browser_focus_ref",
+			Description: "Focus an element by its accessibility ref (backendNodeId from browser_snapshot).",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["envId","ref"],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"},
+					"ref":{"type":"string","description":"Accessibility backendNodeId from snapshot"},
+					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+				}
+			}`),
+		},
+		{
 			Name:        "browser_type",
 			Description: "Type text into an element matching a CSS selector (appends to existing value, fires input/change events).",
 			InputSchema: schema(`{
@@ -334,6 +347,19 @@ func All() []mcp.ToolDef {
 			}`),
 		},
 		{
+			Name:        "browser_hover_ref",
+			Description: "Hover over an element by its accessibility ref (backendNodeId from browser_snapshot).",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["envId","ref"],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"},
+					"ref":{"type":"string","description":"Accessibility backendNodeId from snapshot"},
+					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+				}
+			}`),
+		},
+		{
 			Name:        "browser_select_option",
 			Description: "Set the value of a <select> element and fire change event.",
 			InputSchema: schema(`{
@@ -348,6 +374,20 @@ func All() []mcp.ToolDef {
 			}`),
 		},
 		{
+			Name:        "browser_select_option_ref",
+			Description: "Set the value of a <select> element by its accessibility ref (backendNodeId from browser_snapshot).",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["envId","ref","value"],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"},
+					"ref":{"type":"string","description":"Accessibility backendNodeId from snapshot"},
+					"value":{"type":"string","description":"Option value to select"},
+					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+				}
+			}`),
+		},
+		{
 			Name:        "browser_check",
 			Description: "Check a checkbox or radio input (sets checked=true and fires change event).",
 			InputSchema: schema(`{
@@ -356,6 +396,19 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the checkbox/radio"},
+					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+				}
+			}`),
+		},
+		{
+			Name:        "browser_check_ref",
+			Description: "Check a checkbox/radio by its accessibility ref (backendNodeId from browser_snapshot). Reads .checked status first and clicks only if unchecked.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["envId","ref"],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"},
+					"ref":{"type":"string","description":"Accessibility backendNodeId from snapshot"},
 					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
 				}
 			}`),
@@ -715,6 +768,16 @@ func dispatch(mgr *brosdk.Manager, name string, params json.RawMessage) (string,
 		}
 		return `{"ok":true}`, nil
 
+	case "browser_focus_ref":
+		envID, ref := str(p, "envId"), str(p, "ref")
+		if envID == "" || ref == "" {
+			return "", fmt.Errorf("envId and ref are required")
+		}
+		if err := mgr.FocusRef(envID, str(p, "sessionId"), ref); err != nil {
+			return "", err
+		}
+		return `{"ok":true}`, nil
+
 	case "browser_type":
 		envID, sel, text := str(p, "envId"), str(p, "selector"), str(p, "text")
 		if envID == "" || sel == "" || text == "" {
@@ -825,6 +888,16 @@ func dispatch(mgr *brosdk.Manager, name string, params json.RawMessage) (string,
 		}
 		return `{"ok":true}`, nil
 
+	case "browser_hover_ref":
+		envID, ref := str(p, "envId"), str(p, "ref")
+		if envID == "" || ref == "" {
+			return "", fmt.Errorf("envId and ref are required")
+		}
+		if err := mgr.HoverRef(envID, str(p, "sessionId"), ref); err != nil {
+			return "", err
+		}
+		return `{"ok":true}`, nil
+
 	case "browser_evaluate":
 		envID, expr := str(p, "envId"), str(p, "expression")
 		if envID == "" || expr == "" {
@@ -847,12 +920,32 @@ func dispatch(mgr *brosdk.Manager, name string, params json.RawMessage) (string,
 		}
 		return `{"ok":true}`, nil
 
+	case "browser_select_option_ref":
+		envID, ref, val := str(p, "envId"), str(p, "ref"), str(p, "value")
+		if envID == "" || ref == "" || val == "" {
+			return "", fmt.Errorf("envId, ref and value are required")
+		}
+		if err := mgr.SelectOptionRef(envID, str(p, "sessionId"), ref, val); err != nil {
+			return "", err
+		}
+		return `{"ok":true}`, nil
+
 	case "browser_check":
 		envID, sel := str(p, "envId"), str(p, "selector")
 		if envID == "" || sel == "" {
 			return "", fmt.Errorf("envId and selector are required")
 		}
 		if err := mgr.Check(envID, str(p, "sessionId"), sel); err != nil {
+			return "", err
+		}
+		return `{"ok":true}`, nil
+
+	case "browser_check_ref":
+		envID, ref := str(p, "envId"), str(p, "ref")
+		if envID == "" || ref == "" {
+			return "", fmt.Errorf("envId and ref are required")
+		}
+		if err := mgr.CheckRef(envID, str(p, "sessionId"), ref); err != nil {
 			return "", err
 		}
 		return `{"ok":true}`, nil

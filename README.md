@@ -7,7 +7,7 @@
 
 ## 功能概览
 
-- 通过 40 个 MCP Tool 暴露 BroSDK 全部能力：SDK 生命周期、浏览器控制、浏览器高级操作、环境 CRUD
+- 通过 44 个 MCP Tool 暴露 BroSDK 全部能力：SDK 生命周期、浏览器控制、浏览器高级操作、环境 CRUD
 - 基于 [chromedp](https://github.com/chromedp/chromedp) 的高层浏览器操作——点击、输入、截图、PDF 等，无需手写 CDP 命令
 - 保留 `browser_command` 透明 CDP 代理，支持所有 DevTools 命令的高级/自定义场景
 - 异步工具通过 SSE 事件回传结果，支持长时间等待
@@ -36,7 +36,7 @@ Agent / MCP Client
         │  actions.go (chromedp)   │
         │  - Click, Type, Fill     │
         │  - Snapshot, Screenshot  │
-        │  - 20+ high-level ops    │
+        │  - 30+ high-level ops    │
         └───────┬──────────────────┘
                 │  WebSocket (CDP)
         ┌───────▼──────────┐
@@ -129,7 +129,7 @@ brosdk-mcp.exe -lib libs/windows-x64/brosdk.dll -addr :8765
 | `/message` | POST | JSON-RPC 2.0 请求端点         |
 | `/health`  | GET  | 健康检查（返回 `200 OK`）      |
 
-## MCP Tools（40 个）
+## MCP Tools（44 个）
 
 ### SDK 信息（3 个）
 
@@ -149,7 +149,7 @@ brosdk-mcp.exe -lib libs/windows-x64/brosdk.dll -addr :8765
 | `browser_close`   | Async    | `envId` (必填)                             | 关闭浏览器环境                                   |
 | `browser_command` | Sync     | `envId`, `method` (必填), `params`, `sessionId` | 发送原始 CDP 命令到浏览器                       |
 
-### 浏览器高级操作（27 个）
+### 浏览器高级操作（31 个）
 
 #### 页面导航
 
@@ -166,6 +166,7 @@ brosdk-mcp.exe -lib libs/windows-x64/brosdk.dll -addr :8765
 | `browser_click_ref`| `envId`, `ref` (必填), `sessionId`           | 通过 snapshot ref 点击       |
 | `browser_dblclick` | `envId`, `selector` (必填), `sessionId`      | CSS 选择器双击              |
 | `browser_hover`    | `envId`, `selector` (必填), `sessionId`      | CSS 选择器悬停              |
+| `browser_hover_ref`| `envId`, `ref` (必填), `sessionId`           | 通过 snapshot ref 悬停      |
 
 #### 键盘/输入操作
 
@@ -186,8 +187,11 @@ brosdk-mcp.exe -lib libs/windows-x64/brosdk.dll -addr :8765
 | Tool                   | 参数                                              | 说明                      |
 |------------------------|--------------------------------------------------|---------------------------|
 | `browser_focus`        | `envId`, `selector` (必填), `sessionId`           | CSS 选择器聚焦            |
+| `browser_focus_ref`    | `envId`, `ref` (必填), `sessionId`                | 通过 snapshot ref 聚焦    |
 | `browser_select_option`| `envId`, `selector`, `value` (必填), `sessionId`  | `<select>` 设置值         |
+| `browser_select_option_ref`| `envId`, `ref`, `value` (必填), `sessionId`   | 通过 snapshot ref 设置 select 值 |
 | `browser_check`        | `envId`, `selector` (必填), `sessionId`           | 勾选 checkbox/radio       |
+| `browser_check_ref`    | `envId`, `ref` (必填), `sessionId`                | 通过 snapshot ref 勾选    |
 | `browser_uncheck`      | `envId`, `selector` (必填), `sessionId`           | 取消勾选 checkbox         |
 
 #### 滚动/拖拽
@@ -243,13 +247,17 @@ brosdk-mcp.exe -lib libs/windows-x64/brosdk.dll -addr :8765
 - 🟡 多次操作同一页面——snapshot 成本摊薄
 - 🟢 AI 需要理解页面结构——snapshot 本身提供上下文
 
-**已实现 `_ref` 变体的工具**：
+**已实现 `_ref` 变体的工具**（7 个）：
 
-| 基础工具           | ref 变体             | 说明               |
-|-------------------|---------------------|--------------------|
-| `browser_click`   | `browser_click_ref`  | 点击               |
-| `browser_type`    | `browser_type_ref`   | 输入（追加）        |
-| `browser_fill`    | `browser_fill_ref`   | 清除后输入          |
+| 基础工具                | ref 变体                  | 说明               |
+|------------------------|--------------------------|--------------------|
+| `browser_click`        | `browser_click_ref`       | 点击               |
+| `browser_type`         | `browser_type_ref`        | 输入（追加）        |
+| `browser_fill`         | `browser_fill_ref`        | 清除后输入          |
+| `browser_hover`        | `browser_hover_ref`       | 悬停               |
+| `browser_focus`        | `browser_focus_ref`       | 聚焦               |
+| `browser_select_option`| `browser_select_option_ref`| 设置 select 值     |
+| `browser_check`        | `browser_check_ref`       | 勾选 checkbox/radio|
 
 ## browser_command — CDP 命令参考
 
@@ -335,24 +343,31 @@ SSE 连接每 15 秒发送 `: ping` 心跳保持连接。
 
 ## E2E 测试
 
+测试文件按功能拆分为 8 个文件，方便单独运行：
+
+| 文件 | 测试函数 | 覆盖内容 |
+|------|---------|---------|
+| `e2e_test.go` | — | 共享测试基础设施（JSON-RPC 客户端、SSE reader、fixture） |
+| `e2e_basic_test.go` | `TestE2E_AllTools` | SDK 初始化 → 环境管理 → 浏览器开闭 → CDP 命令 |
+| | `TestE2E_CDPFormInteraction` | navigate → fill → click → evaluate 完整表单交互 |
+| `e2e_snapshot_test.go` | `TestE2E_SnapshotClickRef` | snapshot → 提取 ref → click_ref → evaluate 验证 |
+| `e2e_form_test.go` | `TestE2E_FormElements` | 9 个表单元素操作：focus/type/fill/select/check + ref 变体 |
+| `e2e_keyboard_test.go` | `TestE2E_KeyboardInteraction` | press_key/keyboard_type/insert_text/key_down/key_up |
+| `e2e_mouse_test.go` | `TestE2E_MouseInteraction` | dblclick/hover/hover_ref/find_click_text |
+| `e2e_scroll_test.go` | `TestE2E_ScrollAndScreenshot` | scroll/scroll_into_view/screenshot/PDF |
+| `e2e_drag_test.go` | `TestE2E_DragAndUpload` | drag/upload_file |
+
 ```bash
 # 运行全部 e2e 测试（需 Windows + DLL + 有效 apiKey）
-go test -v -run TestE2E -timeout 180s
+go test -v -run TestE2E -timeout 600s
 
-# 单独运行 snapshot + click_ref 测试
-go test -v -run TestE2E_SnapshotClickRef -timeout 180s
-
-# 单独运行 CDP 表单交互测试
-go test -v -run TestE2E_CDPFormInteraction -timeout 180s
+# 单独运行某个测试文件
+go test -v -run TestE2E_FormElements -timeout 300s .
+go test -v -run TestE2E_KeyboardInteraction -timeout 300s .
+go test -v -run TestE2E_SnapshotClickRef -timeout 300s .
 ```
 
-测试覆盖：
-
-| 测试                                | 覆盖内容                                                 |
-|-------------------------------------|--------------------------------------------------------|
-| `TestE2E_AllTools`                  | SDK 初始化 → 环境管理 → 浏览器开闭 → CDP 命令             |
-| `TestE2E_SnapshotClickRef`          | snapshot → 提取 ref → click_ref → evaluate 验证          |
-| `TestE2E_CDPFormInteraction`        | navigate → fill → click → evaluate 完整表单交互          |
+测试覆盖 44 个 MCP tools 中的 43 个（97.7%），仅 `browser_install`（纯异步、耗时过长）未覆盖。
 
 ## 目录结构
 
@@ -360,7 +375,18 @@ go test -v -run TestE2E_CDPFormInteraction -timeout 180s
 brosdk-mcp-go/
 ├── main.go                        # 入口、CLI 参数、优雅关闭
 ├── go.mod
-├── e2e_test.go                    # E2E 测试（需 Windows）
+├── README.md
+├── README_EN.md
+├── docs/
+│   └── tools-reference.md         # 44 个 MCP Tool API 参考
+├── e2e_test.go                    # E2E 共享基础设施（类型、fixture、helper）
+├── e2e_basic_test.go              # E2E: SDK 基础 + CDP 表单测试
+├── e2e_snapshot_test.go           # E2E: snapshot + click_ref 工作流
+├── e2e_form_test.go               # E2E: 表单元素交互
+├── e2e_keyboard_test.go           # E2E: 键盘交互
+├── e2e_mouse_test.go              # E2E: 鼠标交互
+├── e2e_scroll_test.go             # E2E: 滚动 + 截图 + PDF
+├── e2e_drag_test.go               # E2E: 拖拽 + 文件上传
 ├── libs/
 │   ├── brosdk.h                   # C 头文件（参考）
 │   └── windows-x64/
@@ -383,7 +409,7 @@ brosdk-mcp-go/
     ├── mcp/
     │   └── server.go              # MCP SSE 服务器（JSON-RPC 2.0 + 广播）
     └── tools/
-        └── tools.go               # 40 个 Tool 定义 + handler dispatch
+        └── tools.go               # 44 个 Tool 定义 + handler dispatch
 ```
 
 ## 关键设计

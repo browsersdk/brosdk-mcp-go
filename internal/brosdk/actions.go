@@ -244,10 +244,10 @@ func (m *Manager) ClickRef(envID, sessionID, ref string) error {
 				return err
 			}
 			nid := cdp.NodeID(nodeID)
-			if err := chromedp.ScrollIntoView(nid, chromedp.ByNodeID).Do(ctx); err != nil {
+			if err := chromedp.ScrollIntoView([]cdp.NodeID{nid}, chromedp.ByNodeID).Do(ctx); err != nil {
 				return err
 			}
-			return chromedp.Click(nid, chromedp.ByNodeID).Do(ctx)
+			return chromedp.Click([]cdp.NodeID{nid}, chromedp.ByNodeID).Do(ctx)
 		}),
 	)
 }
@@ -276,6 +276,32 @@ func (m *Manager) Focus(envID, sessionID, selector string) error {
 	)
 }
 
+// FocusRef focuses an element by its accessibility ref.
+func (m *Manager) FocusRef(envID, sessionID, ref string) error {
+	tabCtx, err := m.ensureTab(envID)
+	if err != nil {
+		return err
+	}
+	backendID, err := toBackendID(ref)
+	if err != nil {
+		return err
+	}
+
+	return chromedp.Run(tabCtx,
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			nodeID, err := resolveNodeID(ctx, backendID)
+			if err != nil {
+				return err
+			}
+			nid := cdp.NodeID(nodeID)
+			if err := chromedp.ScrollIntoView([]cdp.NodeID{nid}, chromedp.ByNodeID).Do(ctx); err != nil {
+				return err
+			}
+			return chromedp.Focus([]cdp.NodeID{nid}, chromedp.ByNodeID).Do(ctx)
+		}),
+	)
+}
+
 // Hover moves the mouse over an element matching a CSS selector.
 func (m *Manager) Hover(envID, sessionID, selector string) error {
 	tabCtx, err := m.ensureTab(envID)
@@ -297,6 +323,38 @@ func (m *Manager) Hover(envID, sessionID, selector string) error {
 				return fmt.Errorf("get box model: %w", err)
 			}
 			// Content quad: [x1,y1, x2,y2, x3,y3, x4,y4]
+			x := (box.Content[0] + box.Content[2]) / 2
+			y := (box.Content[1] + box.Content[5]) / 2
+			return input.DispatchMouseEvent(input.MouseMoved, x, y).Do(ctx)
+		}),
+	)
+}
+
+// HoverRef hovers over an element by its accessibility ref.
+func (m *Manager) HoverRef(envID, sessionID, ref string) error {
+	tabCtx, err := m.ensureTab(envID)
+	if err != nil {
+		return err
+	}
+	backendID, err := toBackendID(ref)
+	if err != nil {
+		return err
+	}
+
+	return chromedp.Run(tabCtx,
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			nodeID, err := resolveNodeID(ctx, backendID)
+			if err != nil {
+				return err
+			}
+			nid := cdp.NodeID(nodeID)
+			if err := chromedp.ScrollIntoView([]cdp.NodeID{nid}, chromedp.ByNodeID).Do(ctx); err != nil {
+				return err
+			}
+			box, err := cdpdom.GetBoxModel().WithNodeID(nid).Do(ctx)
+			if err != nil {
+				return fmt.Errorf("get box model: %w", err)
+			}
 			x := (box.Content[0] + box.Content[2]) / 2
 			y := (box.Content[1] + box.Content[5]) / 2
 			return input.DispatchMouseEvent(input.MouseMoved, x, y).Do(ctx)
@@ -335,13 +393,13 @@ func (m *Manager) TypeRef(envID, sessionID, ref, text string) error {
 				return err
 			}
 			nid := cdp.NodeID(nodeID)
-			if err := chromedp.ScrollIntoView(nid, chromedp.ByNodeID).Do(ctx); err != nil {
+			if err := chromedp.ScrollIntoView([]cdp.NodeID{nid}, chromedp.ByNodeID).Do(ctx); err != nil {
 				return err
 			}
-			if err := chromedp.Focus(nid, chromedp.ByNodeID).Do(ctx); err != nil {
+			if err := chromedp.Focus([]cdp.NodeID{nid}, chromedp.ByNodeID).Do(ctx); err != nil {
 				return err
 			}
-			return chromedp.SendKeys(nid, text, chromedp.ByNodeID).Do(ctx)
+			return chromedp.SendKeys([]cdp.NodeID{nid}, text, chromedp.ByNodeID).Do(ctx)
 		}),
 	)
 }
@@ -354,9 +412,7 @@ func (m *Manager) Fill(envID, sessionID, selector, text string) error {
 	}
 	return chromedp.Run(tabCtx,
 		chromedp.ScrollIntoView(selector),
-		chromedp.Focus(selector),
-		chromedp.Clear(selector),
-		chromedp.SendKeys(selector, text),
+		chromedp.SetValue(selector, text),
 	)
 }
 
@@ -378,16 +434,10 @@ func (m *Manager) FillRef(envID, sessionID, ref, text string) error {
 				return err
 			}
 			nid := cdp.NodeID(nodeID)
-			if err := chromedp.ScrollIntoView(nid, chromedp.ByNodeID).Do(ctx); err != nil {
+			if err := chromedp.ScrollIntoView([]cdp.NodeID{nid}, chromedp.ByNodeID).Do(ctx); err != nil {
 				return err
 			}
-			if err := chromedp.Focus(nid, chromedp.ByNodeID).Do(ctx); err != nil {
-				return err
-			}
-			if err := chromedp.Clear(nid, chromedp.ByNodeID).Do(ctx); err != nil {
-				return err
-			}
-			return chromedp.SendKeys(nid, text, chromedp.ByNodeID).Do(ctx)
+			return chromedp.SetValue([]cdp.NodeID{nid}, text, chromedp.ByNodeID).Do(ctx)
 		}),
 	)
 }
@@ -422,10 +472,10 @@ func (m *Manager) FindClickText(envID, sessionID, text string) error {
 				return fmt.Errorf("text not found: %s", text)
 			}
 			nid := cdp.NodeID(nodeIDs[0])
-			if err := chromedp.ScrollIntoView(nid, chromedp.ByNodeID).Do(ctx); err != nil {
+			if err := chromedp.ScrollIntoView([]cdp.NodeID{nid}, chromedp.ByNodeID).Do(ctx); err != nil {
 				return err
 			}
-			return chromedp.Click(nid, chromedp.ByNodeID).Do(ctx)
+			return chromedp.Click([]cdp.NodeID{nid}, chromedp.ByNodeID).Do(ctx)
 		}),
 	)
 }
@@ -512,6 +562,41 @@ func (m *Manager) SelectOption(envID, sessionID, selector, value string) error {
 	)
 }
 
+// SelectOptionRef sets the value of a <select> element by its accessibility ref.
+// Uses CDP ResolveNode + CallFunctionOn to set .value and dispatch change event,
+// since SetValue by NodeID does not reliably fire the change event for <select>.
+func (m *Manager) SelectOptionRef(envID, sessionID, ref, value string) error {
+	tabCtx, err := m.ensureTab(envID)
+	if err != nil {
+		return err
+	}
+	backendID, err := toBackendID(ref)
+	if err != nil {
+		return err
+	}
+
+	return chromedp.Run(tabCtx,
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			nodeID, err := resolveNodeID(ctx, backendID)
+			if err != nil {
+				return err
+			}
+			nid := cdp.NodeID(nodeID)
+			if err := chromedp.ScrollIntoView([]cdp.NodeID{nid}, chromedp.ByNodeID).Do(ctx); err != nil {
+				return err
+			}
+			obj, err := cdpdom.ResolveNode().WithBackendNodeID(backendID).Do(ctx)
+			if err != nil {
+				return err
+			}
+			_, _, err = runtime.CallFunctionOn(
+				fmt.Sprintf("function(){this.value=%q;this.dispatchEvent(new Event('change',{bubbles:true}))}", value),
+			).WithObjectID(obj.ObjectID).Do(ctx)
+			return err
+		}),
+	)
+}
+
 // Check checks a checkbox or radio input.
 func (m *Manager) Check(envID, sessionID, selector string) error {
 	tabCtx, err := m.ensureTab(envID)
@@ -534,6 +619,55 @@ func (m *Manager) Check(envID, sessionID, selector string) error {
 		return chromedp.Run(tabCtx, chromedp.Click(selector))
 	}
 	return nil
+}
+
+// CheckRef checks a checkbox/radio by its accessibility ref.
+// Uses CDP ResolveNode + CallFunctionOn to read the .checked property,
+// then clicks only if the element is not already checked.
+func (m *Manager) CheckRef(envID, sessionID, ref string) error {
+	tabCtx, err := m.ensureTab(envID)
+	if err != nil {
+		return err
+	}
+	backendID, err := toBackendID(ref)
+	if err != nil {
+		return err
+	}
+
+	return chromedp.Run(tabCtx,
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			nodeID, err := resolveNodeID(ctx, backendID)
+			if err != nil {
+				return err
+			}
+			nid := cdp.NodeID(nodeID)
+
+			// Check .checked property via ResolveNode → CallFunctionOn
+			obj, err := cdpdom.ResolveNode().WithBackendNodeID(backendID).Do(ctx)
+			if err != nil {
+				return err
+			}
+			result, _, err := runtime.CallFunctionOn("function(){return this.checked}").
+				WithObjectID(obj.ObjectID).
+				Do(ctx)
+			if err != nil {
+				return err
+			}
+			var checked bool
+			if result != nil && len(result.Value) > 0 {
+				json.Unmarshal(result.Value, &checked)
+			}
+
+			if checked {
+				return nil
+			}
+
+			if err := chromedp.ScrollIntoView([]cdp.NodeID{nid}, chromedp.ByNodeID).Do(ctx); err != nil {
+				return err
+			}
+			return chromedp.Click([]cdp.NodeID{nid}, chromedp.ByNodeID).Do(ctx)
+		}),
+	)
 }
 
 // Uncheck unchecks a checkbox.

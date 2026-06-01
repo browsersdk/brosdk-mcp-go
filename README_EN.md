@@ -7,7 +7,7 @@ so AI Agents (Claude, CodeBuddy, etc.) can directly control fingerprint browser 
 
 ## Feature Overview
 
-- Expose all BroSDK capabilities through 40 MCP Tools: SDK lifecycle, browser control, high-level browser actions, environment CRUD
+- Expose all BroSDK capabilities through 44 MCP Tools: SDK lifecycle, browser control, high-level browser actions, environment CRUD
 - High-level browser operations powered by [chromedp](https://github.com/chromedp/chromedp) — click, type, fill, screenshot, PDF, no raw CDP required
 - Retain `browser_command` transparent CDP proxy for advanced/custom DevTools scenarios
 - Async tools deliver results via SSE events, with support for long-wait operations
@@ -36,7 +36,7 @@ Agent / MCP Client
         │  actions.go (chromedp)   │
         │  - Click, Type, Fill     │
         │  - Snapshot, Screenshot  │
-        │  - 20+ high-level ops    │
+        │  - 30+ high-level ops    │
         └───────┬──────────────────┘
                 │  WebSocket (CDP)
         ┌───────▼──────────┐
@@ -129,7 +129,7 @@ When `-lib` is omitted, the search order is: `./brosdk.dll` → `libs/windows-x6
 | `/message`     | POST   | JSON-RPC 2.0 request endpoint       |
 | `/health`      | GET    | Health check (returns `200 OK`)     |
 
-## MCP Tools (40)
+## MCP Tools (44)
 
 ### SDK Info (3)
 
@@ -149,7 +149,7 @@ When `-lib` is omitted, the search order is: `./brosdk.dll` → `libs/windows-x6
 | `browser_close`   | Async     | `envId` (required)                          | Close browser environment                       |
 | `browser_command` | Sync      | `envId`, `method` (required), `params`, `sessionId` | Send raw CDP command to browser          |
 
-### Browser Actions (27)
+### Browser Actions (31)
 
 #### Page Navigation
 
@@ -166,6 +166,7 @@ When `-lib` is omitted, the search order is: `./brosdk.dll` → `libs/windows-x6
 | `browser_click_ref`| `envId`, `ref` (required), `sessionId`        | Click by snapshot ref       |
 | `browser_dblclick` | `envId`, `selector` (required), `sessionId`   | Double-click by CSS selector |
 | `browser_hover`    | `envId`, `selector` (required), `sessionId`   | Hover by CSS selector       |
+| `browser_hover_ref`| `envId`, `ref` (required), `sessionId`        | Hover by snapshot ref       |
 
 #### Keyboard / Input
 
@@ -186,8 +187,11 @@ When `-lib` is omitted, the search order is: `./brosdk.dll` → `libs/windows-x6
 | Tool                   | Parameters                                       | Description                 |
 |------------------------|--------------------------------------------------|-----------------------------|
 | `browser_focus`        | `envId`, `selector` (required), `sessionId`       | Focus by CSS selector       |
+| `browser_focus_ref`    | `envId`, `ref` (required), `sessionId`            | Focus by snapshot ref       |
 | `browser_select_option`| `envId`, `selector`, `value` (required), `sessionId` | Set `<select>` value    |
+| `browser_select_option_ref`| `envId`, `ref`, `value` (required), `sessionId` | Set select value by snapshot ref |
 | `browser_check`        | `envId`, `selector` (required), `sessionId`       | Check checkbox/radio        |
+| `browser_check_ref`    | `envId`, `ref` (required), `sessionId`            | Check by snapshot ref       |
 | `browser_uncheck`      | `envId`, `selector` (required), `sessionId`       | Uncheck checkbox            |
 
 #### Scroll / Drag
@@ -243,13 +247,17 @@ Some browser actions support two targeting modes: CSS selector (`browser_click`)
 - 🟡 Multiple operations on the same page — snapshot cost is amortized
 - 🟢 AI needs to understand page structure — snapshot itself provides context
 
-**Tools with `_ref` variants**:
+**Tools with `_ref` variants** (7):
 
-| Base Tool          | Ref Variant          | Description        |
-|-------------------|---------------------|--------------------|
-| `browser_click`   | `browser_click_ref`  | Click              |
-| `browser_type`    | `browser_type_ref`   | Type (append)      |
-| `browser_fill`    | `browser_fill_ref`   | Clear + type       |
+| Base Tool             | Ref Variant               | Description         |
+|-----------------------|--------------------------|---------------------|
+| `browser_click`       | `browser_click_ref`       | Click               |
+| `browser_type`        | `browser_type_ref`        | Type (append)       |
+| `browser_fill`        | `browser_fill_ref`        | Clear + type        |
+| `browser_hover`       | `browser_hover_ref`       | Hover               |
+| `browser_focus`       | `browser_focus_ref`       | Focus               |
+| `browser_select_option`| `browser_select_option_ref`| Set select value   |
+| `browser_check`       | `browser_check_ref`       | Check checkbox/radio|
 
 ## browser_command — CDP Command Reference
 
@@ -334,24 +342,31 @@ SSE connections receive a `: ping` heartbeat every 15 seconds.
 
 ## E2E Tests
 
+Test files are split into 8 files by feature area for easy focused runs:
+
+| File | Test Function | Coverage |
+|------|-------------|----------|
+| `e2e_test.go` | — | Shared test infrastructure (JSON-RPC client, SSE reader, fixture) |
+| `e2e_basic_test.go` | `TestE2E_AllTools` | SDK init → env mgmt → browser open/close → CDP commands |
+| | `TestE2E_CDPFormInteraction` | navigate → fill → click → evaluate full form flow |
+| `e2e_snapshot_test.go` | `TestE2E_SnapshotClickRef` | snapshot → extract ref → click_ref → evaluate verify |
+| `e2e_form_test.go` | `TestE2E_FormElements` | 9 form element ops: focus/type/fill/select/check + ref variants |
+| `e2e_keyboard_test.go` | `TestE2E_KeyboardInteraction` | press_key/keyboard_type/insert_text/key_down/key_up |
+| `e2e_mouse_test.go` | `TestE2E_MouseInteraction` | dblclick/hover/hover_ref/find_click_text |
+| `e2e_scroll_test.go` | `TestE2E_ScrollAndScreenshot` | scroll/scroll_into_view/screenshot/PDF |
+| `e2e_drag_test.go` | `TestE2E_DragAndUpload` | drag/upload_file |
+
 ```bash
 # Run all e2e tests (requires Windows + DLL + valid apiKey)
-go test -v -run TestE2E -timeout 180s
+go test -v -run TestE2E -timeout 600s
 
-# Run only the snapshot + click_ref test
-go test -v -run TestE2E_SnapshotClickRef -timeout 180s
-
-# Run only the CDP form interaction test
-go test -v -run TestE2E_CDPFormInteraction -timeout 180s
+# Run individual test files
+go test -v -run TestE2E_FormElements -timeout 300s .
+go test -v -run TestE2E_KeyboardInteraction -timeout 300s .
+go test -v -run TestE2E_SnapshotClickRef -timeout 300s .
 ```
 
-Test coverage:
-
-| Test                                | Coverage                                                   |
-|-------------------------------------|------------------------------------------------------------|
-| `TestE2E_AllTools`                  | SDK init → env mgmt → browser open/close → CDP commands   |
-| `TestE2E_SnapshotClickRef`          | snapshot → extract ref → click_ref → evaluate verify      |
-| `TestE2E_CDPFormInteraction`        | navigate → fill → click → evaluate full form flow         |
+43 out of 44 MCP tools covered (97.7%); only `browser_install` (async, long-running) is not covered.
 
 ## Project Layout
 
@@ -359,7 +374,18 @@ Test coverage:
 brosdk-mcp-go/
 ├── main.go                        # Entry point, CLI flags, graceful shutdown
 ├── go.mod
-├── e2e_test.go                    # E2E tests (Windows only)
+├── README.md
+├── README_EN.md
+├── docs/
+│   └── tools-reference.md         # 44 MCP Tool API reference
+├── e2e_test.go                    # E2E shared infrastructure (types, fixture, helpers)
+├── e2e_basic_test.go              # E2E: SDK basics + CDP form tests
+├── e2e_snapshot_test.go           # E2E: snapshot + click_ref workflow
+├── e2e_form_test.go               # E2E: form element interactions
+├── e2e_keyboard_test.go           # E2E: keyboard interactions
+├── e2e_mouse_test.go              # E2E: mouse interactions
+├── e2e_scroll_test.go             # E2E: scroll + screenshot + PDF
+├── e2e_drag_test.go               # E2E: drag + file upload
 ├── libs/
 │   ├── brosdk.h                   # C header (reference)
 │   └── windows-x64/
@@ -382,7 +408,7 @@ brosdk-mcp-go/
     ├── mcp/
     │   └── server.go              # MCP SSE server (JSON-RPC 2.0 + broadcast)
     └── tools/
-        └── tools.go               # 40 tool definitions + handler dispatch
+        └── tools.go               # 44 tool definitions + handler dispatch
 ```
 
 ## Key Design Decisions
