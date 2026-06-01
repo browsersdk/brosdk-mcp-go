@@ -5,6 +5,17 @@
 将 BroSDK 指纹浏览器 SDK 封装为 [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) SSE 服务，
 让 AI Agent（Claude、CodeBuddy 等）可以直接操控指纹浏览器环境。
 
+## 文档导航
+
+> AI Agent 入口：从本文件开始。以下是各文档的用途速查。
+
+| 文档 | 用途 | 何时读 |
+|------|------|--------|
+| **README.md**（本文件） | 项目总览、API 速查、配置、运行 | 首次了解项目 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计、技术栈、设计决策 | 理解实现原理 / 贡献代码 |
+| [docs/tools-reference.md](docs/tools-reference.md) | 44 个 MCP Tool 完整 API 参考 | 查找特定 tool 的参数/返回值 |
+| [.workbuddy/memory/MEMORY.md](.workbuddy/memory/MEMORY.md) | 项目记忆（AI 助手内部使用） | 了解项目约定和历史决策 |
+
 ## 功能概览
 
 - 通过 44 个 MCP Tool 暴露 BroSDK 全部能力：SDK 生命周期、浏览器控制、浏览器高级操作、环境 CRUD
@@ -378,7 +389,8 @@ brosdk-mcp-go/
 ├── README.md
 ├── README_EN.md
 ├── docs/
-│   └── tools-reference.md         # 44 个 MCP Tool API 参考
+│   ├── ARCHITECTURE.md             # 架构设计 + 技术决策
+│   └── tools-reference.md          # 44 个 MCP Tool API 参考
 ├── e2e_test.go                    # E2E 共享基础设施（类型、fixture、helper）
 ├── e2e_basic_test.go              # E2E: SDK 基础 + CDP 表单测试
 ├── e2e_snapshot_test.go           # E2E: snapshot + click_ref 工作流

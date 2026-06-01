@@ -5,6 +5,17 @@ English | [简体中文](README.md)
 Wrap the BroSDK fingerprint-browser SDK as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) SSE service,
 so AI Agents (Claude, CodeBuddy, etc.) can directly control fingerprint browser environments.
 
+## Doc Navigation
+
+> AI Agent entry point: start here. Quick reference to all project docs.
+
+| Document | Purpose | When to Read |
+|----------|---------|-------------|
+| **README.md** (this file) | Project overview, API reference, config, usage | First time |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, tech stack, design decisions | Understanding internals / contributing |
+| [docs/tools-reference.md](docs/tools-reference.md) | Full 44-tool API reference | Looking up specific tool params/returns |
+| [.workbuddy/memory/MEMORY.md](.workbuddy/memory/MEMORY.md) | Project memory (AI internal) | Project conventions & history |
+
 ## Feature Overview
 
 - Expose all BroSDK capabilities through 44 MCP Tools: SDK lifecycle, browser control, high-level browser actions, environment CRUD
@@ -377,7 +388,8 @@ brosdk-mcp-go/
 ├── README.md
 ├── README_EN.md
 ├── docs/
-│   └── tools-reference.md         # 44 MCP Tool API reference
+│   ├── ARCHITECTURE.md             # Architecture & design decisions
+│   └── tools-reference.md          # 44 MCP Tool API reference
 ├── e2e_test.go                    # E2E shared infrastructure (types, fixture, helpers)
 ├── e2e_basic_test.go              # E2E: SDK basics + CDP form tests
 ├── e2e_snapshot_test.go           # E2E: snapshot + click_ref workflow

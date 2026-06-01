@@ -2,6 +2,7 @@
 config.local.json
 
 # build output
+brosdk-mcp-go.exe
 brosdk-mcp.exe
 brosdk-mcp
 .brosdk
