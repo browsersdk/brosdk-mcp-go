@@ -693,8 +693,7 @@ func dispatch(mgr *brosdk.Manager, name string, params json.RawMessage) (string,
 		return resp.Response, nil
 
 	case "sdk_token_update":
-		body := rawOrJSON(p, "userSig", "userSig")
-		reqID, err := mgr.TokenUpdate(body)
+		reqID, err := mgr.TokenUpdate(jsonFromParams(p))
 		if err != nil {
 			return "", err
 		}
@@ -713,11 +712,7 @@ func dispatch(mgr *brosdk.Manager, name string, params json.RawMessage) (string,
 
 	// ── Browser ──
 	case "browser_install":
-		body := `{}`
-		if channel := str(p, "channel"); channel != "" {
-			body = `{"channel":"` + escJ(channel) + `"}`
-		}
-		reqID, err := mgr.BrowserInstall(body)
+		reqID, err := mgr.BrowserInstall(jsonFromParams(p))
 		if err != nil {
 			return "", err
 		}
@@ -1179,61 +1174,35 @@ func dispatch(mgr *brosdk.Manager, name string, params json.RawMessage) (string,
 
 	// ── Environment CRUD ──
 	case "env_create":
-		body := str(p, "body")
-		if body == "" {
-			body = buildEnvCreateBody(p)
-		}
-		resp, err := mgr.EnvCreate(body)
+		resp, err := mgr.EnvCreate(jsonFromParams(p))
 		if err != nil {
 			return "", err
 		}
 		return resp.Response, nil
 
 	case "env_page":
-		body := str(p, "body")
-		if body == "" {
-			body = buildEnvPageBody(p)
-		}
-		resp, err := mgr.EnvPage(body)
+		resp, err := mgr.EnvPage(jsonFromParams(p))
 		if err != nil {
 			return "", err
 		}
 		return resp.Response, nil
 
 	case "env_update":
-		body := str(p, "body")
-		if body == "" {
-			envID := str(p, "envId")
-			if envID == "" {
-				return "", fmt.Errorf("envId is required")
-			}
-			body = `{"envId":"` + escJ(envID) + `"}`
-		}
-		resp, err := mgr.EnvUpdate(body)
+		resp, err := mgr.EnvUpdate(jsonFromParams(p))
 		if err != nil {
 			return "", err
 		}
 		return resp.Response, nil
 
 	case "env_destroy":
-		envID := str(p, "envId")
-		if envID == "" {
-			return "", fmt.Errorf("envId is required")
-		}
-		body := `{"envId":"` + escJ(envID) + `"}`
-		resp, err := mgr.EnvDestroy(body)
+		resp, err := mgr.EnvDestroy(jsonFromParams(p))
 		if err != nil {
 			return "", err
 		}
 		return resp.Response, nil
 
 	case "env_getinfo":
-		envID := str(p, "envId")
-		if envID == "" {
-			return "", fmt.Errorf("envId is required")
-		}
-		body := `{"envId":"` + escJ(envID) + `","pageSize":1}`
-		resp, err := mgr.EnvPage(body)
+		resp, err := mgr.EnvPage(jsonFromParams(p))
 		if err != nil {
 			return "", err
 		}
@@ -1245,6 +1214,13 @@ func dispatch(mgr *brosdk.Manager, name string, params json.RawMessage) (string,
 }
 
 // ---------- param helpers ----------
+
+// jsonFromParams marshals p back to JSON. Used for pass-through tools
+// where the dispatch layer does NOT know SDK parameter structure.
+func jsonFromParams(p map[string]any) string {
+	b, _ := json.Marshal(p)
+	return string(b)
+}
 
 func str(p map[string]any, key string) string {
 	if v, ok := p[key].(string); ok {
@@ -1269,64 +1245,6 @@ func strSlice(p map[string]any, key string) []string {
 	for _, v := range raw {
 		if s, ok := v.(string); ok {
 			out = append(out, s)
-		}
-	}
-	return out
-}
-
-func rawOrJSON(p map[string]any, field, jsonKey string) string {
-	v := str(p, field)
-	return `{"` + jsonKey + `":"` + escJ(v) + `"}`
-}
-
-func rawBodyOr(p map[string]any, def string) string {
-	if b := str(p, "body"); b != "" {
-		return b
-	}
-	return def
-}
-
-func buildEnvCreateBody(p map[string]any) string {
-	body := `{`
-	sep := ""
-	if name := str(p, "name"); name != "" {
-		body += sep + `"name":"` + escJ(name) + `"`
-		sep = ","
-	}
-	if os := str(p, "os"); os != "" {
-		body += sep + `"os":"` + escJ(os) + `"`
-	}
-	return body + `}`
-}
-
-func buildEnvPageBody(p map[string]any) string {
-	page := 1
-	pageSize := 20
-	if v, ok := p["page"].(float64); ok && v >= 1 {
-		page = int(v)
-	}
-	if v, ok := p["pageSize"].(float64); ok && v >= 1 {
-		pageSize = int(v)
-	}
-	return fmt.Sprintf(`{"page":%d,"pageSize":%d}`, page, pageSize)
-}
-
-func escJ(s string) string {
-	out := ""
-	for _, r := range s {
-		switch r {
-		case '\\':
-			out += `\\`
-		case '"':
-			out += `\"`
-		case '\n':
-			out += `\n`
-		case '\r':
-			out += `\r`
-		case '\t':
-			out += `\t`
-		default:
-			out += string(r)
 		}
 	}
 	return out
