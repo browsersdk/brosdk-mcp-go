@@ -13,12 +13,12 @@
 |------|------|--------|
 | **README.md**（本文件） | 项目总览、API 速查、配置、运行 | 首次了解项目 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计、技术栈、设计决策 | 理解实现原理 / 贡献代码 |
-| [docs/tools-reference.md](docs/tools-reference.md) | 44 个 MCP Tool 完整 API 参考 | 查找特定 tool 的参数/返回值 |
+| [docs/tools-reference.md](docs/tools-reference.md) | 50 个 MCP Tool 完整 API 参考 | 查找特定 tool 的参数/返回值 |
 | [.workbuddy/memory/MEMORY.md](.workbuddy/memory/MEMORY.md) | 项目记忆（AI 助手内部使用） | 了解项目约定和历史决策 |
 
 ## 功能概览
 
-- 通过 44 个 MCP Tool 暴露 BroSDK 全部能力：SDK 生命周期、浏览器控制、浏览器高级操作、环境 CRUD
+- 通过 50 个 MCP Tool 暴露 BroSDK 全部能力：SDK 生命周期、浏览器控制、浏览器高级操作、环境 CRUD
 - 基于 [chromedp](https://github.com/chromedp/chromedp) 的高层浏览器操作——点击、输入、截图、PDF 等，无需手写 CDP 命令
 - 保留 `browser_command` 透明 CDP 代理，支持所有 DevTools 命令的高级/自定义场景
 - 异步工具通过 SSE 事件回传结果，支持长时间等待
@@ -47,7 +47,7 @@ Agent / MCP Client
         │  actions.go (chromedp)   │
         │  - Click, Type, Fill     │
         │  - Snapshot, Screenshot  │
-        │  - 30+ high-level ops    │
+        │  - 37 high-level ops     │
         └───────┬──────────────────┘
                 │  WebSocket (CDP)
         ┌───────▼──────────┐
@@ -141,11 +141,12 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 
 | 端点        | 方法  | 说明                          |
 |------------|------|--------------------------------|
+| `/inspector` | GET | 内嵌 MCP Inspector Web UI     |
 | `/sse`     | GET  | SSE 流（MCP transport）        |
 | `/message` | POST | JSON-RPC 2.0 请求端点         |
 | `/health`  | GET  | 健康检查（返回 `200 OK`）      |
 
-## MCP Tools（44 个）
+## MCP Tools（50 个）
 
 ### SDK 信息（3 个）
 
@@ -165,13 +166,16 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | `browser_close`   | Async    | `envId` (必填)                             | 关闭浏览器环境                                   |
 | `browser_command` | Sync     | `envId`, `method` (必填), `params`, `sessionId` | 发送原始 CDP 命令到浏览器                       |
 
-### 浏览器高级操作（31 个）
+### 浏览器高级操作（37 个）
 
 #### 页面导航
 
 | Tool              | 参数                                         | 说明                                              |
 |-------------------|---------------------------------------------|---------------------------------------------------|
 | `browser_navigate`| `envId`, `url` (必填)                        | 打开 URL，返回 `{targetId, sessionId}`             |
+| `browser_reload`  | `envId` (必填), `sessionId`                  | 重新加载当前页面                                    |
+| `browser_back`    | `envId` (必填), `sessionId`                  | 浏览器后退                                          |
+| `browser_forward` | `envId` (必填), `sessionId`                  | 浏览器前进                                          |
 | `browser_snapshot`| `envId` (必填), `sessionId`                  | 获取页面无障碍树，含 `backendDOMNodeId`，供 `_ref` 工具使用 |
 
 #### 鼠标操作
@@ -194,7 +198,7 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | `browser_fill_ref`          | `envId`, `ref`, `text` (必填), `sessionId`        | 通过 snapshot ref 清除后输入       |
 | `browser_press_key`         | `envId`, `key` (必填), `sessionId`                | 按键（Enter、Escape、Tab 等）      |
 | `browser_keyboard_type`     | `envId`, `text` (必填), `sessionId`               | 逐字符键入                         |
-| `browser_keyboard_insert_text` | `envId`, `text` (必填), `sessionId`            | Input.insertText 插入文本          |
+| `browser_insert_text` | `envId`, `text` (必填), `sessionId`            | Input.insertText 插入文本          |
 | `browser_key_down`          | `envId`, `key` (必填), `sessionId`                | keyDown 事件                      |
 | `browser_key_up`            | `envId`, `key` (必填), `sessionId`                | keyUp 事件                        |
 
@@ -209,6 +213,7 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | `browser_check`        | `envId`, `selector` (必填), `sessionId`           | 勾选 checkbox/radio       |
 | `browser_check_ref`    | `envId`, `ref` (必填), `sessionId`                | 通过 snapshot ref 勾选    |
 | `browser_uncheck`      | `envId`, `selector` (必填), `sessionId`           | 取消勾选 checkbox         |
+| `browser_uncheck_ref`  | `envId`, `ref` (必填), `sessionId`                | 通过 snapshot ref 取消勾选 |
 
 #### 滚动/拖拽
 
@@ -231,6 +236,8 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | Tool                    | 参数                                              | 说明                                     |
 |-------------------------|--------------------------------------------------|------------------------------------------|
 | `browser_find_click_text`| `envId`, `text` (必填), `sessionId`             | 按可见文本查找并点击                      |
+| `browser_get_text`    | `envId`, `selector` (必填), `sessionId`          | 获取元素可见文本内容                        |
+| `browser_get_value`   | `envId`, `selector` (必填), `sessionId`          | 获取 input 元素的 value 属性               |
 | `browser_evaluate`      | `envId`, `expression` (必填), `sessionId`        | 执行 JavaScript 表达式并返回结果           |
 
 ### 环境管理（5 个）
@@ -263,7 +270,7 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 - 🟡 多次操作同一页面——snapshot 成本摊薄
 - 🟢 AI 需要理解页面结构——snapshot 本身提供上下文
 
-**已实现 `_ref` 变体的工具**（7 个）：
+**已实现 `_ref` 变体的工具**（8 个）：
 
 | 基础工具                | ref 变体                  | 说明               |
 |------------------------|--------------------------|--------------------|
@@ -274,6 +281,7 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | `browser_focus`        | `browser_focus_ref`       | 聚焦               |
 | `browser_select_option`| `browser_select_option_ref`| 设置 select 值     |
 | `browser_check`        | `browser_check_ref`       | 勾选 checkbox/radio|
+| `browser_uncheck`      | `browser_uncheck_ref`     | 取消勾选            |
 
 ## browser_command — CDP 命令参考
 
@@ -383,7 +391,7 @@ go test -v -run TestE2E_KeyboardInteraction -timeout 300s .
 go test -v -run TestE2E_SnapshotClickRef -timeout 300s .
 ```
 
-测试覆盖 44 个 MCP tools 中的 43 个（97.7%），仅 `browser_install`（纯异步、耗时过长）未覆盖。
+测试覆盖 50 个 MCP tools 中的 49 个（98%），仅 `browser_install`（纯异步、耗时过长）未覆盖。
 
 ## 目录结构
 
@@ -395,7 +403,7 @@ brosdk-mcp-go/
 ├── README_EN.md
 ├── docs/
 │   ├── ARCHITECTURE.md             # 架构设计 + 技术决策
-│   └── tools-reference.md          # 44 个 MCP Tool API 参考
+│   └── tools-reference.md          # 50 个 MCP Tool API 参考
 ├── e2e_test.go                    # E2E 共享基础设施（类型、fixture、helper）
 ├── e2e_basic_test.go              # E2E: SDK 基础 + CDP 表单测试
 ├── e2e_snapshot_test.go           # E2E: snapshot + click_ref 工作流
@@ -421,16 +429,17 @@ brosdk-mcp-go/
     │   ├── manager.go             # 高级 Go API（Manager 单例 + 事件发布）
     │   ├── types.go               # 数据类型 + JSON 构造器 + CDP 类型
     │   ├── errors.go              # 错误辅助函数
-    │   ├── cdp.go                 # CDP WebSocket 代理（仅 Windows）
-    │   ├── cdp_unsupported.go     # CDP 桩（非 Windows）
-    │   ├── actions.go             # chromedp 高层浏览器操作（仅 Windows）
-    │   └── actions_unsupported.go # actions 桩（非 Windows）
+    │   ├── cdp.go                 # CDP WebSocket 代理（Windows / macOS）
+    │   ├── cdp_unsupported.go     # CDP 桩（其他平台）
+    │   ├── actions.go             # chromedp 高层浏览器操作（Windows / macOS）
+    │   └── actions_unsupported.go # actions 桩（其他平台）
     ├── config/
     │   └── config.go              # 启动配置加载（config.local.json → config.json）
     ├── mcp/
-    │   └── server.go              # MCP SSE 服务器（JSON-RPC 2.0 + 广播）
+    │   ├── server.go              # MCP SSE 服务器（JSON-RPC 2.0 + 广播）
+    │   └── inspector.go           # 内嵌 MCP Inspector Web UI
     └── tools/
-        └── tools.go               # 44 个 Tool 定义 + handler dispatch
+        └── tools.go               # 50 个 Tool 定义 + handler dispatch
 ```
 
 ## 关键设计

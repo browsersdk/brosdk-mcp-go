@@ -44,7 +44,7 @@ brosdk-mcp-go/
 │   │   ├── http.go             # HTTP 客户端（fetchUserSig API）
 │   │   ├── cdp.go              # CDP WebSocket 代理（windows || darwin）
 │   │   ├── cdp_unsupported.go  # CDP 桩（其他平台）
-│   │   ├── actions.go          # chromedp 高层浏览器操作（31 个 action）
+│   │   ├── actions.go          # chromedp 高层浏览器操作（37 个 action）
 │   │   └── actions_unsupported.go # actions 桩
 │   ├── config/
 │   │   └── config.go           # config.local.json → config.json 加载

@@ -13,12 +13,12 @@ so AI Agents (Claude, CodeBuddy, etc.) can directly control fingerprint browser 
 |----------|---------|-------------|
 | **README.md** (this file) | Project overview, API reference, config, usage | First time |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, tech stack, design decisions | Understanding internals / contributing |
-| [docs/tools-reference.md](docs/tools-reference.md) | Full 44-tool API reference | Looking up specific tool params/returns |
+| [docs/tools-reference.md](docs/tools-reference.md) | Full 50-tool API reference | Looking up specific tool params/returns |
 | [.workbuddy/memory/MEMORY.md](.workbuddy/memory/MEMORY.md) | Project memory (AI internal) | Project conventions & history |
 
 ## Feature Overview
 
-- Expose all BroSDK capabilities through 44 MCP Tools: SDK lifecycle, browser control, high-level browser actions, environment CRUD
+- Expose all BroSDK capabilities through 50 MCP Tools: SDK lifecycle, browser control, high-level browser actions, environment CRUD
 - High-level browser operations powered by [chromedp](https://github.com/chromedp/chromedp) — click, type, fill, screenshot, PDF, no raw CDP required
 - Retain `browser_command` transparent CDP proxy for advanced/custom DevTools scenarios
 - Async tools deliver results via SSE events, with support for long-wait operations
@@ -47,7 +47,7 @@ Agent / MCP Client
         │  actions.go (chromedp)   │
         │  - Click, Type, Fill     │
         │  - Snapshot, Screenshot  │
-        │  - 30+ high-level ops    │
+        │  - 37 high-level ops     │
         └───────┬──────────────────┘
                 │  WebSocket (CDP)
         ┌───────▼──────────┐
@@ -143,11 +143,12 @@ Real-time progress is printed to console during download.
 
 | Endpoint       | Method | Description                         |
 |----------------|--------|-------------------------------------|
+| `/inspector`   | GET    | Built-in MCP Inspector Web UI       |
 | `/sse`         | GET    | SSE stream (MCP transport)          |
 | `/message`     | POST   | JSON-RPC 2.0 request endpoint       |
 | `/health`      | GET    | Health check (returns `200 OK`)     |
 
-## MCP Tools (44)
+## MCP Tools (50)
 
 ### SDK Info (3)
 
@@ -167,13 +168,16 @@ Real-time progress is printed to console during download.
 | `browser_close`   | Async     | `envId` (required)                          | Close browser environment                       |
 | `browser_command` | Sync      | `envId`, `method` (required), `params`, `sessionId` | Send raw CDP command to browser          |
 
-### Browser Actions (31)
+### Browser Actions (37)
 
 #### Page Navigation
 
 | Tool              | Parameters                                   | Description                                      |
 |-------------------|----------------------------------------------|--------------------------------------------------|
 | `browser_navigate`| `envId`, `url` (required)                    | Open URL; returns `{targetId, sessionId}`        |
+| `browser_reload`  | `envId` (required), `sessionId`               | Reload the current page                           |
+| `browser_back`    | `envId` (required), `sessionId`               | Navigate back in browser history                  |
+| `browser_forward` | `envId` (required), `sessionId`               | Navigate forward in browser history               |
 | `browser_snapshot`| `envId` (required), `sessionId`              | Capture accessibility tree with `backendDOMNodeId` refs |
 
 #### Mouse Actions
@@ -196,7 +200,7 @@ Real-time progress is printed to console during download.
 | `browser_fill_ref`          | `envId`, `ref`, `text` (required), `sessionId`      | Clear + type by snapshot ref     |
 | `browser_press_key`         | `envId`, `key` (required), `sessionId`              | Press key (Enter, Escape, Tab…)  |
 | `browser_keyboard_type`     | `envId`, `text` (required), `sessionId`             | Type char by char                |
-| `browser_keyboard_insert_text` | `envId`, `text` (required), `sessionId`          | Insert text via Input.insertText |
+| `browser_insert_text` | `envId`, `text` (required), `sessionId`          | Insert text via Input.insertText |
 | `browser_key_down`          | `envId`, `key` (required), `sessionId`              | keyDown event                    |
 | `browser_key_up`            | `envId`, `key` (required), `sessionId`              | keyUp event                      |
 
@@ -211,6 +215,7 @@ Real-time progress is printed to console during download.
 | `browser_check`        | `envId`, `selector` (required), `sessionId`       | Check checkbox/radio        |
 | `browser_check_ref`    | `envId`, `ref` (required), `sessionId`            | Check by snapshot ref       |
 | `browser_uncheck`      | `envId`, `selector` (required), `sessionId`       | Uncheck checkbox            |
+| `browser_uncheck_ref`  | `envId`, `ref` (required), `sessionId`            | Uncheck by snapshot ref    |
 
 #### Scroll / Drag
 
@@ -233,6 +238,8 @@ Real-time progress is printed to console during download.
 | Tool                    | Parameters                                       | Description                               |
 |-------------------------|--------------------------------------------------|-------------------------------------------|
 | `browser_find_click_text`| `envId`, `text` (required), `sessionId`         | Find visible text and click               |
+| `browser_get_text`    | `envId`, `selector` (required), `sessionId`       | Return visible text content of element      |
+| `browser_get_value`   | `envId`, `selector` (required), `sessionId`       | Return value attribute of input element     |
 | `browser_evaluate`      | `envId`, `expression` (required), `sessionId`    | Execute JavaScript and return result      |
 
 ### Environment Management (5)
@@ -265,7 +272,7 @@ Some browser actions support two targeting modes: CSS selector (`browser_click`)
 - 🟡 Multiple operations on the same page — snapshot cost is amortized
 - 🟢 AI needs to understand page structure — snapshot itself provides context
 
-**Tools with `_ref` variants** (7):
+**Tools with `_ref` variants** (8):
 
 | Base Tool             | Ref Variant               | Description         |
 |-----------------------|--------------------------|---------------------|
@@ -276,6 +283,7 @@ Some browser actions support two targeting modes: CSS selector (`browser_click`)
 | `browser_focus`       | `browser_focus_ref`       | Focus               |
 | `browser_select_option`| `browser_select_option_ref`| Set select value   |
 | `browser_check`       | `browser_check_ref`       | Check checkbox/radio|
+| `browser_uncheck`     | `browser_uncheck_ref`     | Uncheck             |
 
 ## browser_command — CDP Command Reference
 
@@ -384,7 +392,7 @@ go test -v -run TestE2E_KeyboardInteraction -timeout 300s .
 go test -v -run TestE2E_SnapshotClickRef -timeout 300s .
 ```
 
-43 out of 44 MCP tools covered (97.7%); only `browser_install` (async, long-running) is not covered.
+49 out of 50 MCP tools covered (98%); only `browser_install` (async, long-running) is not covered.
 
 ## Project Layout
 
@@ -396,7 +404,7 @@ brosdk-mcp-go/
 ├── README_EN.md
 ├── docs/
 │   ├── ARCHITECTURE.md             # Architecture & design decisions
-│   └── tools-reference.md          # 44 MCP Tool API reference
+│   └── tools-reference.md          # 50 MCP Tool API reference
 ├── e2e_test.go                    # E2E shared infrastructure (types, fixture, helpers)
 ├── e2e_basic_test.go              # E2E: SDK basics + CDP form tests
 ├── e2e_snapshot_test.go           # E2E: snapshot + click_ref workflow
@@ -429,9 +437,10 @@ brosdk-mcp-go/
     ├── config/
     │   └── config.go              # Startup config loader (config.local.json → config.json)
     ├── mcp/
-    │   └── server.go              # MCP SSE server (JSON-RPC 2.0 + broadcast)
+    │   ├── server.go              # MCP SSE server (JSON-RPC 2.0 + broadcast)
+    │   └── inspector.go           # Built-in MCP Inspector Web UI
     └── tools/
-        └── tools.go               # 44 tool definitions + handler dispatch
+        └── tools.go               # 50 tool definitions + handler dispatch
 ```
 
 ## Key Design Decisions
