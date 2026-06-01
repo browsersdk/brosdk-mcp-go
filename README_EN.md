@@ -23,7 +23,7 @@ so AI Agents (Claude, CodeBuddy, etc.) can directly control fingerprint browser 
 - Retain `browser_command` transparent CDP proxy for advanced/custom DevTools scenarios
 - Async tools deliver results via SSE events, with support for long-wait operations
 - Dual config files (`config.json` / `config.local.json`), auto-init SDK at startup
-- Cross-platform compilation (Windows production / stub builds for other platforms)
+- Cross-platform: Windows / macOS native support, auto-download library on first run
 
 ## Architecture
 
@@ -52,8 +52,8 @@ Agent / MCP Client
                 │  WebSocket (CDP)
         ┌───────▼──────────┐
         │  Native Layer    │
-        │  syscall DLL     │
-        │  brosdk.dll      │
+        │  syscall / CGo   │
+        │  brosdk.dll/.dylib│
         └───────┬──────────┘
                 │  WebSocket (browser control)
         ┌───────▼──────────┐
@@ -65,21 +65,20 @@ Agent / MCP Client
 
 ## Prerequisites
 
-- Windows x64 (runtime; build works on any OS with stub implementations)
+- Windows x64 (runtime; build works on any OS, macOS is fully supported via CGo)
 - Go 1.26+
-- `brosdk.dll` — located at `libs/windows-x64/brosdk.dll` (included in repo)
+- **Windows** x64 / **macOS** arm64
+- Go 1.26+
+- brosdk native library — **auto-downloaded from GitHub Releases** on first run
 
 ## Build
 
 ```bash
-# Windows — production build
-go build -o brosdk-mcp.exe .
-
-# Linux/macOS — stub build (no DLL, tools return errors)
-go build .
+# Windows / macOS — production build
+go build -o brosdk-mcp .
 ```
 
-No build tags; pure `GOOS` constraints (`//go:build windows` / `//go:build !windows`).
+Build constraints: `//go:build windows` / `//go:build darwin` / `//go:build !windows && !darwin`.
 
 ## Configuration
 
@@ -118,19 +117,28 @@ local file is never checked into version control and takes precedence.
 ## Run
 
 ```bash
-brosdk-mcp.exe -lib libs/windows-x64/brosdk.dll -addr :8765
+# First run — auto-download platform library from GitHub Releases
+brosdk-mcp -addr :8765
+
+# Explicit library path
+brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 ```
 
 ### CLI Flags
 
-| Flag   | Default                          | Description                    |
-|--------|----------------------------------|--------------------------------|
-| `-lib` | `libs/windows-x64/brosdk.dll`   | Path to brosdk native library  |
-| `-addr`| `:8765`                          | HTTP listen address            |
+| Flag   | Default                   | Description                    |
+|--------|---------------------------|--------------------------------|
+| `-lib` | (auto-download)           | Path to brosdk native library  |
+| `-addr`| `:8765`                   | HTTP listen address            |
 
-### DLL Auto-Discovery
+### Library Auto-Download
 
-When `-lib` is omitted, the search order is: `./brosdk.dll` → `libs/windows-x64/brosdk.dll`.
+When `-lib` is omitted, the lookup order is:
+1. `./brosdk.dll` (Windows) or `./libbrosdk.dylib` (macOS)
+2. `libs/<platform>/` local copy
+3. Auto-download from [GitHub Releases](https://github.com/browsersdk/brosdk/releases) (latest version)
+
+Real-time progress is printed to console during download.
 
 ## Endpoints
 
@@ -400,21 +408,25 @@ brosdk-mcp-go/
 ├── e2e_drag_test.go               # E2E: drag + file upload
 ├── libs/
 │   ├── brosdk.h                   # C header (reference)
-│   └── windows-x64/
-│       └── brosdk.dll             # Native SDK library
+│   ├── windows-x64/
+│   │   └── brosdk.dll             # Windows x64 native library
+│   └── darwin-arm64/
+│       └── libbrosdk.dylib        # macOS arm64 native library (auto-downloaded)
 └── internal/
     ├── brosdk/                    # Native SDK bindings + chromedp browser actions
     │   ├── native.go              # nativeLib interface
-    │   ├── native_windows.go      # Windows syscall.LazyDLL implementation
-    │   ├── native_unsupported.go  # Stub for non-Windows builds
+    │   ├── native_windows.go      # Windows syscall.LazyDLL impl
+    │   ├── native_darwin.go       # macOS CGo dlopen/dlsym impl
+    │   ├── native_unsupported.go  # Stub for unsupported platforms
+    │   ├── download.go            # GitHub Releases auto-downloader
     │   ├── http.go                # HTTP client: fetchUserSig via BroSDK API
     │   ├── manager.go             # High-level Go API (Manager singleton + event publishing)
     │   ├── types.go               # Data types + JSON builders + CDP types
     │   ├── errors.go              # Error helper
-    │   ├── cdp.go                 # CDP WebSocket proxy (Windows only)
-    │   ├── cdp_unsupported.go     # CDP stub (non-Windows)
-    │   ├── actions.go             # chromedp high-level browser actions (Windows only)
-    │   └── actions_unsupported.go # actions stub (non-Windows)
+    │   ├── cdp.go                 # CDP WebSocket proxy (Windows / macOS)
+    │   ├── cdp_unsupported.go     # CDP stub (other platforms)
+    │   ├── actions.go             # chromedp browser actions (Windows / macOS)
+    │   └── actions_unsupported.go # actions stub (other platforms)
     ├── config/
     │   └── config.go              # Startup config loader (config.local.json → config.json)
     ├── mcp/

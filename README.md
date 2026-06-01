@@ -23,7 +23,7 @@
 - 保留 `browser_command` 透明 CDP 代理，支持所有 DevTools 命令的高级/自定义场景
 - 异步工具通过 SSE 事件回传结果，支持长时间等待
 - 双配置文件（`config.json` / `config.local.json`），启动时自动初始化 SDK
-- 跨平台编译（Windows 生产 / 其他平台桩编译）
+- 跨平台：Windows / macOS 原生支持，首次运行自动下载对应动态库
 
 ## 架构
 
@@ -52,8 +52,8 @@ Agent / MCP Client
                 │  WebSocket (CDP)
         ┌───────▼──────────┐
         │  Native Layer    │
-        │  syscall DLL     │
-        │  brosdk.dll      │
+        │  syscall / CGo   │
+        │  brosdk.dll/.dylib│
         └───────┬──────────┘
                 │  WebSocket (browser control)
         ┌───────▼──────────┐
@@ -65,21 +65,18 @@ Agent / MCP Client
 
 ## 前置要求
 
-- Windows x64（运行；编译可在任何 OS 上，非 Windows 生成桩实现）
+- **Windows** x64 / **macOS** arm64
 - Go 1.26+
-- `brosdk.dll` — 位于 `libs/windows-x64/brosdk.dll`（仓库已包含）
+- brosdk 原生库 — 首次运行**自动从 GitHub Releases 下载**，无需手动准备
 
 ## 编译
 
 ```bash
-# Windows — 生产编译
-go build -o brosdk-mcp.exe .
-
-# Linux/macOS — 桩编译（无 DLL，tool 调用返回错误）
-go build .
+# Windows / macOS — 生产编译
+go build -o brosdk-mcp .
 ```
 
-无 build tag 依赖，纯 `GOOS` 约束（`//go:build windows` / `//go:build !windows`）。
+build constraint：`//go:build windows` / `//go:build darwin` / `//go:build !windows && !darwin`。
 
 ## 配置
 
@@ -118,19 +115,28 @@ go build .
 ## 运行
 
 ```bash
-brosdk-mcp.exe -lib libs/windows-x64/brosdk.dll -addr :8765
+# 首次运行 — 自动下载对应平台的 brosdk 动态库
+brosdk-mcp -addr :8765
+
+# 手动指定本地库路径
+brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 ```
 
 ### 命令行参数
 
 | 参数    | 默认值                           | 说明                        |
 |---------|---------------------------------|------------------------------|
-| `-lib`  | `libs/windows-x64/brosdk.dll`   | brosdk 原生库路径             |
+| `-lib`  | （自动下载）                      | brosdk 原生库路径             |
 | `-addr` | `:8765`                         | HTTP 监听地址                |
 
-### DLL 自动发现
+### 动态库自动下载
 
-`-lib` 未指定时，按顺序查找：`./brosdk.dll` → `libs/windows-x64/brosdk.dll`。
+`-lib` 未指定时，按以下顺序查找：
+1. `./brosdk.dll`（Windows）或 `./libbrosdk.dylib`（macOS）
+2. `libs/<platform>/` 目录下的本地库
+3. 自动从 [GitHub Releases](https://github.com/browsersdk/brosdk/releases) 下载最新版本
+
+下载时控制台输出实时进度，下载完成后解压到 `libs/<platform>/` 目录。
 
 ## 端点
 
@@ -400,14 +406,18 @@ brosdk-mcp-go/
 ├── e2e_scroll_test.go             # E2E: 滚动 + 截图 + PDF
 ├── e2e_drag_test.go               # E2E: 拖拽 + 文件上传
 ├── libs/
-│   ├── brosdk.h                   # C 头文件（参考）
-│   └── windows-x64/
-│       └── brosdk.dll             # 原生 SDK 库
+│   ├── brosdk.h                    # C 头文件（参考）
+│   ├── windows-x64/
+│   │   └── brosdk.dll              # Windows x64 原生库
+│   └── darwin-arm64/
+│       └── libbrosdk.dylib         # macOS arm64 原生库（自动下载）
 └── internal/
     ├── brosdk/                    # 原生 SDK 绑定 + chromedp 浏览器操作
     │   ├── native.go              # nativeLib 接口定义
     │   ├── native_windows.go      # Windows syscall.LazyDLL 实现
-    │   ├── native_unsupported.go  # 非 Windows 桩实现
+    │   ├── native_darwin.go       # macOS CGo dlopen/dlsym 实现
+    │   ├── native_unsupported.go  # 其他平台桩实现
+    │   ├── download.go            # GitHub Releases 自动下载
     │   ├── http.go                # HTTP 客户端：fetchUserSig
     │   ├── manager.go             # 高级 Go API（Manager 单例 + 事件发布）
     │   ├── types.go               # 数据类型 + JSON 构造器 + CDP 类型

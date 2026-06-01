@@ -25,7 +25,7 @@ func NewManager() *Manager {
 }
 
 // Load loads the native library from the given file path and registers
-// the result callback. Only supported on Windows.
+// the result callback. Supported on Windows and macOS.
 func (m *Manager) Load(path string) error {
 	lib, err := loadNative(path, m.emit)
 	if err != nil {

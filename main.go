@@ -2,7 +2,9 @@
 //
 // Usage:
 //
-//	brosdk-mcp-go -lib ./libs/windows-x64/brosdk.dll -addr :8765
+//	brosdk-mcp-go -lib ./libs/windows-x64/brosdk.dll -addr :8765      (Windows)
+//	brosdk-mcp-go -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765  (macOS)
+//	brosdk-mcp-go -addr :8765                                          (auto-download on first run)
 //
 // The server exposes a single SSE endpoint (GET /sse) and a message
 // endpoint (POST /message) as defined by the MCP 2024-11-05 spec.
@@ -34,8 +36,11 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
 	log.SetPrefix("[brosdk-mcp] ")
 
-	// ── Load native SDK library ──────────────────────────────────────────────
-	libPath := resolveLibPath(*libFlag)
+	// ── Load native SDK library (auto-download if missing) ────────────────────
+	libPath, err := brosdk.EnsureLibrary(*libFlag)
+	if err != nil {
+		log.Fatalf("library setup failed: %v", err)
+	}
 	mgr := brosdk.NewManager()
 	if err := mgr.Load(libPath); err != nil {
 		log.Fatalf("failed to load brosdk library %q: %v", libPath, err)
@@ -119,22 +124,11 @@ func main() {
 	}
 }
 
-// resolveLibPath determines the brosdk.dll path.
-// Order: explicit -lib flag → ./brosdk.dll → libs/windows-x64/brosdk.dll.
+// resolveLibPath determines the brosdk library path for the current platform.
+// Order: explicit -lib flag → local candidates → auto-download from GitHub.
+// This is the legacy fallback; EnsureLibrary in download.go does the full logic.
 func resolveLibPath(explicit string) string {
-	if explicit != "" {
-		return explicit
-	}
-	candidates := []string{
-		"brosdk.dll",
-		filepath.Join("libs", "windows-x64", "brosdk.dll"),
-	}
-	for _, p := range candidates {
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
-	}
-	return "brosdk.dll"
+	return explicit
 }
 
 // loadConfigOrNil reads config.local.json → config.json in order.
