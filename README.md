@@ -14,7 +14,6 @@
 | **README.md**（本文件） | 项目总览、API 速查、配置、运行 | 首次了解项目 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计、技术栈、设计决策 | 理解实现原理 / 贡献代码 |
 | [docs/tools-reference.md](docs/tools-reference.md) | 50 个 MCP Tool 完整 API 参考 | 查找特定 tool 的参数/返回值 |
-| [.workbuddy/memory/MEMORY.md](.workbuddy/memory/MEMORY.md) | 项目记忆（AI 助手内部使用） | 了解项目约定和历史决策 |
 
 ## 功能概览
 

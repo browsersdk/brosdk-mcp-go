@@ -11,6 +11,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"log"
@@ -18,6 +19,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"time"
 	"syscall"
 
 	"github.com/browsersdk/brosdk-mcp-go/internal/brosdk"
@@ -111,7 +113,11 @@ func main() {
 				log.Printf("sdk shutdown error: %v", err)
 			}
 		}
-		os.Exit(0)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := httpSrv.Shutdown(ctx); err != nil {
+			log.Printf("http server shutdown error: %v", err)
+		}
 	}()
 
 	log.Printf("MCP SSE server listening on %s", *addr)

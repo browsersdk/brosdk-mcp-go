@@ -14,7 +14,6 @@ so AI Agents (Claude, CodeBuddy, etc.) can directly control fingerprint browser 
 | **README.md** (this file) | Project overview, API reference, config, usage | First time |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, tech stack, design decisions | Understanding internals / contributing |
 | [docs/tools-reference.md](docs/tools-reference.md) | Full 50-tool API reference | Looking up specific tool params/returns |
-| [.workbuddy/memory/MEMORY.md](.workbuddy/memory/MEMORY.md) | Project memory (AI internal) | Project conventions & history |
 
 ## Feature Overview
 
