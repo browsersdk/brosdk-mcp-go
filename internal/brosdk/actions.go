@@ -929,6 +929,119 @@ func (m *Manager) PDF(envID, sessionID, path string) (string, error) {
 	return outPath, nil
 }
 
+// ---------- navigation helpers ----------
+
+// Reload reloads the current page.
+func (m *Manager) Reload(envID, sessionID string) error {
+	tabCtx, err := m.ensureTab(envID)
+	if err != nil {
+		return err
+	}
+	return chromedp.Run(tabCtx, chromedp.Reload())
+}
+
+// Back navigates back in browser history.
+func (m *Manager) Back(envID, sessionID string) error {
+	tabCtx, err := m.ensureTab(envID)
+	if err != nil {
+		return err
+	}
+	return chromedp.Run(tabCtx, chromedp.NavigateBack())
+}
+
+// Forward navigates forward in browser history.
+func (m *Manager) Forward(envID, sessionID string) error {
+	tabCtx, err := m.ensureTab(envID)
+	if err != nil {
+		return err
+	}
+	return chromedp.Run(tabCtx, chromedp.NavigateForward())
+}
+
+// GetText returns the visible text content of the element matched by selector.
+func (m *Manager) GetText(envID, sessionID, selector string) (string, error) {
+	tabCtx, err := m.ensureTab(envID)
+	if err != nil {
+		return "", err
+	}
+	var text string
+	err = chromedp.Run(tabCtx, chromedp.TextContent(selector, &text, chromedp.ByQuery))
+	if err != nil {
+		return "", fmt.Errorf("get text: %w", err)
+	}
+	return text, nil
+}
+
+// GetValue returns the value attribute of the element matched by selector
+// (input, textarea, select, etc.).
+func (m *Manager) GetValue(envID, sessionID, selector string) (string, error) {
+	tabCtx, err := m.ensureTab(envID)
+	if err != nil {
+		return "", err
+	}
+	var value string
+	err = chromedp.Run(tabCtx, chromedp.Value(selector, &value, chromedp.ByQuery))
+	if err != nil {
+		return "", fmt.Errorf("get value: %w", err)
+	}
+	return value, nil
+}
+
+// UncheckRef unchecks a checkbox or radio button identified by a
+// snapshot backendDOMNodeId reference.
+func (m *Manager) UncheckRef(envID, sessionID, ref string) error {
+	if envID == "" {
+		return fmt.Errorf("envId is required")
+	}
+	if ref == "" {
+		return fmt.Errorf("ref is required")
+	}
+
+	tabCtx, err := m.ensureTab(envID)
+	if err != nil {
+		return err
+	}
+	backendID, err := toBackendID(ref)
+	if err != nil {
+		return err
+	}
+
+	return chromedp.Run(tabCtx,
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			nodeID, err := resolveNodeID(ctx, backendID)
+			if err != nil {
+				return err
+			}
+			nid := cdp.NodeID(nodeID)
+
+			// Check .checked property via ResolveNode → CallFunctionOn
+			obj, err := cdpdom.ResolveNode().WithBackendNodeID(backendID).Do(ctx)
+			if err != nil {
+				return err
+			}
+			result, _, err := runtime.CallFunctionOn("function(){return this.checked}").
+				WithObjectID(obj.ObjectID).
+				Do(ctx)
+			if err != nil {
+				return err
+			}
+			var checked bool
+			if result != nil && len(result.Value) > 0 {
+				json.Unmarshal(result.Value, &checked)
+			}
+
+			if !checked {
+				return nil // already unchecked
+			}
+
+			if err := chromedp.ScrollIntoView([]cdp.NodeID{nid}, chromedp.ByNodeID).Do(ctx); err != nil {
+				return err
+			}
+			return chromedp.Click([]cdp.NodeID{nid}, chromedp.ByNodeID).Do(ctx)
+		}),
+	)
+}
+
 // ---------- helpers ----------
 
 func fileExists(path string) bool {

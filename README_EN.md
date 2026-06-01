@@ -104,7 +104,6 @@ If a config file is found, `sdk_init` is called automatically.
 | `userSig`  | No       | —                           | Pre-computed signature (takes precedence over apiKey)|
 | `workDir`  | No       | `./brosdk`                  | SDK working directory (auto-created)                |
 | `port`     | No       | `5811`                      | SDK browser control port                            |
-| `sdkApiUrl`| No       | `https://api.brosdk.com`   | SDK API base URL                                    |
 | `debug`    | No       | `false`                     | Enable SDK debug logging                            |
 
 \* Either `apiKey` or `userSig` must be present.

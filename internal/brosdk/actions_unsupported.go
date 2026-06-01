@@ -119,3 +119,43 @@ func (m *Manager) Screenshot(envID, sessionID string, opts ScreenshotOptions) (s
 func (m *Manager) PDF(envID, sessionID, path string) (string, error) {
 	return "", sdkError("browser_pdf is only supported on Windows")
 }
+
+func (m *Manager) Reload(envID, sessionID string) error {
+	return sdkError("browser_reload is only supported on Windows")
+}
+
+func (m *Manager) Back(envID, sessionID string) error {
+	return sdkError("browser_back is only supported on Windows")
+}
+
+func (m *Manager) Forward(envID, sessionID string) error {
+	return sdkError("browser_forward is only supported on Windows")
+}
+
+func (m *Manager) GetText(envID, sessionID, selector string) (string, error) {
+	return "", sdkError("browser_get_text is only supported on Windows")
+}
+
+func (m *Manager) GetValue(envID, sessionID, selector string) (string, error) {
+	return "", sdkError("browser_get_value is only supported on Windows")
+}
+
+func (m *Manager) UncheckRef(envID, sessionID, ref string) error {
+	return sdkError("browser_uncheck_ref is only supported on Windows")
+}
+
+func (m *Manager) FocusRef(envID, sessionID, ref string) error {
+	return sdkError("browser_focus_ref is only supported on Windows")
+}
+
+func (m *Manager) HoverRef(envID, sessionID, ref string) error {
+	return sdkError("browser_hover_ref is only supported on Windows")
+}
+
+func (m *Manager) SelectOptionRef(envID, sessionID, ref, value string) error {
+	return sdkError("browser_select_option_ref is only supported on Windows")
+}
+
+func (m *Manager) CheckRef(envID, sessionID, ref string) error {
+	return sdkError("browser_check_ref is only supported on Windows")
+}

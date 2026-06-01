@@ -143,7 +143,7 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"ref":{"type":"string","description":"Accessibility backendNodeId from snapshot"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -156,7 +156,7 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the element"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -169,7 +169,7 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the element"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -182,7 +182,7 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"ref":{"type":"string","description":"Accessibility backendNodeId from snapshot"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -196,7 +196,7 @@ func All() []mcp.ToolDef {
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the input element"},
 					"text":{"type":"string","description":"Text to type"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -210,7 +210,7 @@ func All() []mcp.ToolDef {
 					"envId":{"type":"string","description":"Target environment ID"},
 					"ref":{"type":"string","description":"Accessibility backendNodeId from snapshot"},
 					"text":{"type":"string","description":"Text to type"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -224,7 +224,7 @@ func All() []mcp.ToolDef {
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the input element"},
 					"text":{"type":"string","description":"Text to fill"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -238,7 +238,7 @@ func All() []mcp.ToolDef {
 					"envId":{"type":"string","description":"Target environment ID"},
 					"ref":{"type":"string","description":"Accessibility backendNodeId from snapshot"},
 					"text":{"type":"string","description":"Text to fill"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -251,7 +251,7 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"text":{"type":"string","description":"Text to search for on the page"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -264,7 +264,7 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"key":{"type":"string","description":"Key name, e.g. 'Enter', 'Escape', 'Tab', 'ArrowDown'"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -277,12 +277,12 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"text":{"type":"string","description":"Text to type character by character"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
 		{
-			Name:        "browser_keyboard_insert_text",
+			Name:        "browser_insert_text",
 			Description: "Insert text via Input.insertText (preferred for text input into a focused field).",
 			InputSchema: schema(`{
 				"type":"object",
@@ -290,7 +290,7 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"text":{"type":"string","description":"Text to insert"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -303,7 +303,7 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"key":{"type":"string","description":"Key name, e.g. 'Shift', 'Control', 'Alt', 'a'"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -316,7 +316,7 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"key":{"type":"string","description":"Key name"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -329,7 +329,7 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"expression":{"type":"string","description":"JavaScript expression, e.g. 'document.title' or 'document.querySelector(\"#status\").textContent'"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -342,7 +342,7 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the element"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -355,7 +355,7 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"ref":{"type":"string","description":"Accessibility backendNodeId from snapshot"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -369,7 +369,7 @@ func All() []mcp.ToolDef {
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the <select> element"},
 					"value":{"type":"string","description":"Option value to select"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -383,7 +383,7 @@ func All() []mcp.ToolDef {
 					"envId":{"type":"string","description":"Target environment ID"},
 					"ref":{"type":"string","description":"Accessibility backendNodeId from snapshot"},
 					"value":{"type":"string","description":"Option value to select"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -396,7 +396,7 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the checkbox/radio"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -409,7 +409,7 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"ref":{"type":"string","description":"Accessibility backendNodeId from snapshot"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -422,7 +422,7 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the checkbox"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -437,7 +437,7 @@ func All() []mcp.ToolDef {
 					"direction":{"type":"string","description":"Scroll direction: up, down, left, right"},
 					"px":{"type":"integer","description":"Pixels to scroll (default 300)"},
 					"selector":{"type":"string","description":"CSS selector of scrollable container (optional; scrolls window if omitted)"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -450,7 +450,7 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the element"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -464,7 +464,7 @@ func All() []mcp.ToolDef {
 					"envId":{"type":"string","description":"Target environment ID"},
 					"sourceSelector":{"type":"string","description":"CSS selector for the draggable source element"},
 					"targetSelector":{"type":"string","description":"CSS selector for the drop target element"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -478,7 +478,7 @@ func All() []mcp.ToolDef {
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the file input element"},
 					"files":{"type":"array","items":{"type":"string"},"description":"Array of file paths to upload"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -491,12 +491,12 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"path":{"type":"string","description":"Output file path (auto-generated if omitted)"},
-					"screenshotDir":{"type":"string","description":"Directory for auto-named screenshots (default: '.')"},
+					"dir":{"type":"string","description":"Directory for auto-named screenshots (default: '.')"},
 					"format":{"type":"string","description":"Image format: 'png' (default) or 'jpeg'"},
 					"quality":{"type":"integer","description":"JPEG quality 0-100 (jpeg only)"},
 					"fullPage":{"type":"boolean","description":"Capture the full scrollable page"},
 					"annotate":{"type":"boolean","description":"Annotate interactive elements (not yet implemented)"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -509,7 +509,82 @@ func All() []mcp.ToolDef {
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"path":{"type":"string","description":"Output PDF file path"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
+				}
+			}`),
+		},
+		{
+			Name:        "browser_reload",
+			Description: "Reload the current page.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["envId"],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"},
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
+				}
+			}`),
+		},
+		{
+			Name:        "browser_back",
+			Description: "Navigate back in browser history.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["envId"],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"},
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
+				}
+			}`),
+		},
+		{
+			Name:        "browser_forward",
+			Description: "Navigate forward in browser history.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["envId"],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"},
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
+				}
+			}`),
+		},
+		{
+			Name:        "browser_get_text",
+			Description: "Return the visible text content of an element matched by a CSS selector.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["envId","selector"],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"},
+					"selector":{"type":"string","description":"CSS selector to locate the element"},
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
+				}
+			}`),
+		},
+		{
+			Name:        "browser_get_value",
+			Description: "Return the value attribute of an input element matched by a CSS selector.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["envId","selector"],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"},
+					"selector":{"type":"string","description":"CSS selector to locate the input element"},
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
+				}
+			}`),
+		},
+		{
+			Name:        "browser_uncheck_ref",
+			Description: "Uncheck a checkbox or radio button identified by a snapshot backendDOMNodeId reference (see browser_snapshot).",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["envId","ref"],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"},
+					"ref":{"type":"string","description":"BackendDOMNodeId from browser_snapshot response"},
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
 		},
@@ -638,7 +713,10 @@ func dispatch(mgr *brosdk.Manager, name string, params json.RawMessage) (string,
 
 	// ── Browser ──
 	case "browser_install":
-		body := rawBodyOr(p, `{}`)
+		body := `{}`
+		if channel := str(p, "channel"); channel != "" {
+			body = `{"channel":"` + escJ(channel) + `"}`
+		}
 		reqID, err := mgr.BrowserInstall(body)
 		if err != nil {
 			return "", err
@@ -848,7 +926,7 @@ func dispatch(mgr *brosdk.Manager, name string, params json.RawMessage) (string,
 		}
 		return `{"ok":true}`, nil
 
-	case "browser_keyboard_insert_text":
+	case "browser_insert_text":
 		envID, text := str(p, "envId"), str(p, "text")
 		if envID == "" || text == "" {
 			return "", fmt.Errorf("envId and text are required")
@@ -1012,7 +1090,7 @@ func dispatch(mgr *brosdk.Manager, name string, params json.RawMessage) (string,
 		}
 		opts := brosdk.ScreenshotOptions{
 			Path:     str(p, "path"),
-			Dir:      str(p, "screenshotDir"),
+			Dir:      str(p, "dir"),
 			Format:   str(p, "format"),
 			Annotate: boolVal(p, "annotate"),
 			FullPage: boolVal(p, "fullPage"),
@@ -1036,6 +1114,68 @@ func dispatch(mgr *brosdk.Manager, name string, params json.RawMessage) (string,
 			return "", err
 		}
 		return fmt.Sprintf(`{"path":%q}`, outPath), nil
+
+	case "browser_reload":
+		envID := str(p, "envId")
+		if envID == "" {
+			return "", fmt.Errorf("envId is required")
+		}
+		if err := mgr.Reload(envID, str(p, "sessionId")); err != nil {
+			return "", err
+		}
+		return `{"ok":true}`, nil
+
+	case "browser_back":
+		envID := str(p, "envId")
+		if envID == "" {
+			return "", fmt.Errorf("envId is required")
+		}
+		if err := mgr.Back(envID, str(p, "sessionId")); err != nil {
+			return "", err
+		}
+		return `{"ok":true}`, nil
+
+	case "browser_forward":
+		envID := str(p, "envId")
+		if envID == "" {
+			return "", fmt.Errorf("envId is required")
+		}
+		if err := mgr.Forward(envID, str(p, "sessionId")); err != nil {
+			return "", err
+		}
+		return `{"ok":true}`, nil
+
+	case "browser_get_text":
+		envID, sel := str(p, "envId"), str(p, "selector")
+		if envID == "" || sel == "" {
+			return "", fmt.Errorf("envId and selector are required")
+		}
+		text, err := mgr.GetText(envID, str(p, "sessionId"), sel)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf(`{"text":%q}`, text), nil
+
+	case "browser_get_value":
+		envID, sel := str(p, "envId"), str(p, "selector")
+		if envID == "" || sel == "" {
+			return "", fmt.Errorf("envId and selector are required")
+		}
+		value, err := mgr.GetValue(envID, str(p, "sessionId"), sel)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf(`{"value":%q}`, value), nil
+
+	case "browser_uncheck_ref":
+		envID, ref := str(p, "envId"), str(p, "ref")
+		if envID == "" || ref == "" {
+			return "", fmt.Errorf("envId and ref are required")
+		}
+		if err := mgr.UncheckRef(envID, str(p, "sessionId"), ref); err != nil {
+			return "", err
+		}
+		return `{"ok":true}`, nil
 
 	// ── Environment CRUD ──
 	case "env_create":

@@ -102,7 +102,6 @@ build constraint：`//go:build windows` / `//go:build darwin` / `//go:build !win
 | `userSig` | 否     | —              | 预计算的签名（优先级高于 apiKey）             |
 | `workDir` | 否     | `./brosdk`     | SDK 工作目录（自动创建）                      |
 | `port`    | 否     | `5811`         | SDK 浏览器控制端口                            |
-| `sdkApiUrl`| 否    | `https://api.brosdk.com` | SDK API 地址                   |
 | `debug`   | 否     | `false`        | 是否启用 SDK 调试日志                        |
 
 \* `apiKey` 或 `userSig` 二选一必须提供。

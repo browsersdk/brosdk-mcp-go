@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-> 44 tools, 4 categories. All async tools return `reqId` immediately; results delivered via SSE `sdk-event`.
+> 50 tools, 4 categories. All async tools return `reqId` immediately; results delivered via SSE `sdk-event`.
 
 ## 1. SDK Info (3 tools)
 
@@ -20,13 +20,16 @@
 | `browser_close` | async | `envId` (required) | `reqId` | Close browser |
 | `browser_command` | sync | `envId`, `method` (required), `params`, `sessionId` | CDP response | Raw CDP command |
 
-## 3. Browser Actions (31 tools)
+## 3. Browser Actions (37 tools)
 
 ### 3.1 Page Navigation
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
 | `browser_navigate` | `envId`, `url` (required) | Navigate to URL; returns `{targetId, sessionId}` |
+| `browser_reload` | `envId` (required), `sessionId` | Reload the current page |
+| `browser_back` | `envId` (required), `sessionId` | Navigate back in browser history |
+| `browser_forward` | `envId` (required), `sessionId` | Navigate forward in browser history |
 | `browser_snapshot` | `envId` (required), `sessionId` | Capture accessibility tree (AX Tree) with `backendDOMNodeId` |
 
 ### 3.2 Mouse Actions
@@ -49,7 +52,7 @@
 | `browser_fill_ref` | `envId`, `ref`, `text` (required), `sessionId` | Clear + type by snapshot ref |
 | `browser_press_key` | `envId`, `key` (required), `sessionId` | Press key (Enter, Escape, Tab...) |
 | `browser_keyboard_type` | `envId`, `text` (required), `sessionId` | Type char by char |
-| `browser_keyboard_insert_text` | `envId`, `text` (required), `sessionId` | Insert text via Input.insertText |
+| `browser_insert_text` | `envId`, `text` (required), `sessionId` | Insert text via Input.insertText |
 | `browser_key_down` | `envId`, `key` (required), `sessionId` | KeyDown event |
 | `browser_key_up` | `envId`, `key` (required), `sessionId` | KeyUp event |
 
@@ -64,6 +67,7 @@
 | `browser_check` | `envId`, `selector` (required), `sessionId` | Check checkbox/radio (idempotent) |
 | `browser_check_ref` | `envId`, `ref` (required), `sessionId` | Check by snapshot ref (idempotent) |
 | `browser_uncheck` | `envId`, `selector` (required), `sessionId` | Uncheck checkbox |
+| `browser_uncheck_ref` | `envId`, `ref` (required), `sessionId` | Uncheck by snapshot ref |
 
 ### 3.5 Scroll / Drag
 
@@ -86,6 +90,8 @@
 | Tool | Parameters | Description |
 |------|-----------|-------------|
 | `browser_find_click_text` | `envId`, `text` (required), `sessionId` | Find visible text and click |
+| `browser_get_text` | `envId`, `selector` (required), `sessionId` | Return visible text content of element |
+| `browser_get_value` | `envId`, `selector` (required), `sessionId` | Return value attribute of input element |
 | `browser_evaluate` | `envId`, `expression` (required), `sessionId` | Execute JavaScript and return result |
 
 ## 4. Environment Management (5 tools)
@@ -106,7 +112,7 @@
 browser_snapshot → AX Tree with backendDOMNodeId → browser_*_ref(envId, ref=NN)
 ```
 
-**7 `_ref` variants**: `click_ref`, `type_ref`, `fill_ref`, `hover_ref`, `focus_ref`, `select_option_ref`, `check_ref`
+**8 `_ref` variants**: `click_ref`, `type_ref`, `fill_ref`, `hover_ref`, `focus_ref`, `select_option_ref`, `check_ref`, `uncheck_ref`
 
 **Key rules:**
 - `findBackendDOMNodeID` does **exact match** on AX `name.value`

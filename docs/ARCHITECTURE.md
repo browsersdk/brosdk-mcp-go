@@ -23,7 +23,7 @@ brosdk-mcp-go/
 ├── go.mod
 ├── README.md / README_EN.md    # 项目说明 + API 参考
 ├── docs/
-│   ├── tools-reference.md      # 44 MCP Tool API 参考
+│   ├── tools-reference.md      # 50 MCP Tool API 参考
 │   └── ARCHITECTURE.md         # 本文档
 ├── e2e_test.go                 # E2E 共享基础设施
 ├── e2e_*_test.go               # 7 个按功能拆分的 E2E 测试文件
@@ -52,7 +52,7 @@ brosdk-mcp-go/
 │   │   ├── server.go           # SSE server + session 管理 + JSON-RPC dispatch
 │   │   └── inspector.go        # 内嵌 MCP Inspector Web UI（自包含 HTML）
 │   └── tools/
-│       └── tools.go            # 44 Tool 定义 + handler dispatch
+│       └── tools.go            # 50 Tool 定义 + handler dispatch
 ```
 
 ## MCP Transport：仅 SSE
