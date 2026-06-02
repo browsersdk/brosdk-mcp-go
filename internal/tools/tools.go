@@ -814,7 +814,7 @@ func All() []mcp.ToolDef {
 		},
 		{
 			Name:        "scene_replay",
-			Description: "Replay a saved scene against a browser environment. Supports {{variable}} substitution in step params. Returns per-step results.",
+			Description: "Replay a saved scene against a browser environment. Uses WaitFor guards (readyState/exists) to ensure each step completes before the next begins. Supports {{variable}} substitution in step params. Returns per-step results.",
 			InputSchema: schema(`{
 				"type":"object",
 				"required":["name","envId"],
@@ -823,7 +823,8 @@ func All() []mcp.ToolDef {
 					"envId":{"type":"string","description":"Target browser environment ID"},
 					"variables":{"type":"object","description":"Key-value pairs for {{variable}} substitution in step params"},
 					"stopOnError":{"type":"boolean","description":"Stop replay on first error (default false)"},
-					"stepDelay":{"type":"number","description":"Delay between steps in milliseconds (default 500)"}
+					"stepDelay":{"type":"number","description":"Delay between steps in milliseconds (default 500)"},
+					"applyHumanDelay":{"type":"boolean","description":"Insert recorded human pauses between steps (default true). Disable for fast headless replay."}
 				}
 			}`),
 		},
@@ -1772,8 +1773,9 @@ func replayScene(mgr *brosdk.Manager, p map[string]any) (string, error) {
 	}
 
 	opts := recorder.ReplayOptions{
-		EnvID:       envID,
-		StopOnError: boolVal(p, "stopOnError"),
+		EnvID:            envID,
+		StopOnError:      boolVal(p, "stopOnError"),
+		ApplyHumanDelay:  true, // default on for safer replay
 	}
 
 	if vars, ok := p["variables"].(map[string]any); ok {
@@ -1786,6 +1788,11 @@ func replayScene(mgr *brosdk.Manager, p map[string]any) (string, error) {
 	}
 	if delay, ok := p["stepDelay"].(float64); ok && delay > 0 {
 		opts.StepDelay = time.Duration(delay) * time.Millisecond
+	}
+	if v, ok := p["applyHumanDelay"]; ok {
+		if b, ok := v.(bool); ok {
+			opts.ApplyHumanDelay = b
+		}
 	}
 
 	player := recorder.NewPlayer(mgr, Dispatch)

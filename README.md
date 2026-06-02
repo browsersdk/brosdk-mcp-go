@@ -261,22 +261,28 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | `scene_get`    | Sync     | `name` (必填)                              | 查看场景详情（步骤 JSON）        |
 | `scene_update` | Sync     | `name` (必填), `scene` (必填)              | 编辑已保存场景的步骤和元数据     |
 | `scene_delete` | Sync     | `name` (必填)                              | 删除场景文件                     |
-| `scene_replay` | Sync     | `name` (必填), `envId` (必填), `variables`, `stopOnError`, `stepDelay` | 加载场景并逐步回放，支持 `{{变量}}` 替换 |
+| `scene_replay` | Sync     | `name` (必填), `envId` (必填), `variables`, `stopOnError`, `stepDelay`, `applyHumanDelay` | 加载场景并逐步回放。WaitFor 守卫确保每步完成后再执行下一步，支持 `{{变量}}` 替换 |
 
 #### 录制回放工作流
 
 ```
 1. record_start({envId:"env-1"})                    → 开始录制
-2. browser_navigate/browser_click/browser_fill...    → 操作自动捕获
+2. browser_navigate/browser_click/browser_fill...    → 操作自动捕获（自动推断 WaitFor 守卫）
 3. record_stop({name:"login_flow"})                  → 自动保存到 workDir/scenes/login_flow.json
 4. scene_replay({name:"login_flow", envId:"env-2",   → 用变量在新环境中回放
      variables:{"username":"alice","password":"s3cret"}})
+
+// 快速无头回放（跳过 human delay）
+5. scene_replay({name:"login_flow", envId:"env-3",
+     applyHumanDelay: false, stepDelay: 100})
 ```
 
 - 录制时自动去除 `envId`/`sessionId`，回放时由调用方注入
 - 步骤中可使用 `{{变量名}}` 占位符，回放时替换为实际值
 - 最大 200 步，步骤间默认 500ms 延迟
 - 场景文件为 JSON 格式，可读可 git 管理
+- **WaitFor 守卫**：navigate/click 等步骤自动推断完成条件（`readyState:complete`），回放阻塞等待而非盲等
+- **HumanDelay**：录制时自动捕获操作之间的人类停顿（上限 3s），回放默认启用（`applyHumanDelay: true`），可关闭加速
 
 ## Ref 定位机制
 

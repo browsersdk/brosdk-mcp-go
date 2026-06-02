@@ -39,7 +39,7 @@ type ReplayOptions struct {
 	Variables      map[string]string
 	StopOnError    bool
 	StepDelay      time.Duration
-	ApplyHumanDelay bool // if true, insert recorded human pauses during replay (default true)
+	ApplyHumanDelay bool // if true, insert recorded human pauses between steps (max 3s per step)
 }
 
 // Player replays scene steps through the dispatch function.
