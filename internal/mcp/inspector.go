@@ -117,6 +117,17 @@ main{flex:1;display:grid;grid-template-columns:280px 1fr;grid-template-rows:1fr 
 .sse-entry .time{color:var(--text2);flex-shrink:0;font-family:var(--mono);font-size:11px}
 .sse-entry .event-type{font-size:11px;color:var(--yellow);flex-shrink:0;font-weight:600;min-width:80px}
 .sse-entry .event-preview{font-size:11px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+/* ── Params doc ── */
+#params-doc{font-size:11px;margin-bottom:8px;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+#params-doc:empty{display:none}
+#params-doc table{width:100%;border-collapse:collapse}
+#params-doc th{background:var(--bg3);color:var(--text2);font-weight:600;text-align:left;padding:4px 8px;font-size:10px;text-transform:uppercase}
+#params-doc td{padding:3px 8px;border-top:1px solid var(--border);font-family:var(--mono);font-size:11px}
+#params-doc td:first-child{color:var(--yellow);white-space:nowrap}
+#params-doc td:nth-child(2){color:var(--text2);width:45px;text-align:center;font-size:10px;text-transform:uppercase}
+#params-doc td:nth-child(3){color:var(--text)}
+.req-tag{display:inline-block;background:var(--red);color:#fff;font-size:9px;padding:0 4px;border-radius:3px;line-height:16px;vertical-align:middle;margin-left:2px}
+.opt-tag{display:inline-block;background:var(--border);color:var(--text2);font-size:9px;padding:0 4px;border-radius:3px;line-height:16px;vertical-align:middle;margin-left:2px}
 .sse-entry .event-expand{font-size:10px;color:var(--text2);flex-shrink:0;transition:transform .15s}
 .sse-entry.open .event-expand{transform:rotate(180deg)}
 .sse-entry .sse-detail{display:none;padding:0 12px 8px;font-family:var(--mono);font-size:11px;color:var(--text);overflow:auto;max-height:300px}
@@ -171,6 +182,7 @@ main{flex:1;display:grid;grid-template-columns:280px 1fr;grid-template-rows:1fr 
         <div id="call-tool-name" style="margin-bottom:2px">Select a tool</div>
         <div id="call-tool-desc"></div>
       </div>
+      <div id="params-doc"></div>
       <div class="param-section">
         <label>Arguments (JSON)</label>
         <textarea id="params-editor" placeholder='{ }' spellcheck="false"></textarea>
@@ -365,15 +377,22 @@ function selectTool(t) {
 
   // Build default params from schema
   let defaultParams = '{}';
+  const paramsDoc = $('params-doc');
+  paramsDoc.innerHTML = '';
+
   if (t.inputSchema) {
     try {
       const schema = typeof t.inputSchema === 'string' ? JSON.parse(t.inputSchema) : t.inputSchema;
       const props = schema.properties || {};
       const required = schema.required || [];
       const defaults = {};
+      let rows = '';
       for (const [k, v] of Object.entries(props)) {
+        const isReq = required.includes(k);
+        const tag = isReq ? '<span class="req-tag">REQUIRED</span>' : '<span class="opt-tag">OPTIONAL</span>';
+        rows += '<tr><td>' + esc(k) + '</td><td>' + (v.type||'any') + '</td><td>' + esc(v.description||'') + ' ' + tag + '</td></tr>';
         if (v.default !== undefined) defaults[k] = v.default;
-        else if (required.includes(k)) {
+        else if (isReq) {
           switch(v.type) {
             case 'string': defaults[k] = ''; break;
             case 'number': case 'integer': defaults[k] = 0; break;
@@ -383,6 +402,9 @@ function selectTool(t) {
             default: defaults[k] = null;
           }
         }
+      }
+      if (rows) {
+        paramsDoc.innerHTML = '<table><thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead><tbody>' + rows + '</tbody></table>';
       }
       defaultParams = JSON.stringify(defaults, null, 2);
     } catch(_) {}
