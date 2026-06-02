@@ -10,10 +10,12 @@ import (
 
 // Step is one captured tool call.
 type Step struct {
-	Index       int                  `json:"index"`
-	Tool        string               `json:"tool"`
-	Params      map[string]any       `json:"params"`
-	Fingerprint *ElementFingerprint  `json:"fingerprint,omitempty"`
+	Index        int                  `json:"index"`
+	Tool         string               `json:"tool"`
+	Params       map[string]any       `json:"params"`
+	Fingerprint  *ElementFingerprint  `json:"fingerprint,omitempty"`
+	WaitFor      *WaitGuard           `json:"waitFor,omitempty"`      // post-step condition guard
+	HumanDelayMs int                  `json:"humanDelayMs,omitempty"` // recorded human pause (ms) before this action
 }
 
 // Scene is a complete recorded sequence.
@@ -37,11 +39,12 @@ type Status struct {
 
 // Recorder is the global recording singleton.
 type Recorder struct {
-	mu           sync.Mutex
-	running      bool
-	steps        []Step
-	startTime    time.Time
-	lastSnapshot json.RawMessage
+	mu              sync.Mutex
+	running         bool
+	steps           []Step
+	startTime       time.Time
+	lastSnapshot    json.RawMessage
+	lastCaptureTime time.Time // for HumanDelayMs tracking
 }
 
 var globalRec *Recorder
@@ -113,21 +116,37 @@ func (r *Recorder) SetLastSnapshot(raw json.RawMessage) {
 // Capture records a tool call step. Silently drops when not recording.
 // For _ref tools, extracts a stable fingerprint from the cached snapshot
 // so the replay can resolve the ref in a new browser session.
+// Auto-infers a WaitFor guard based on the tool type and captures the
+// inter-step human delay for natural-paced replay.
 func (r *Recorder) Capture(tool string, params map[string]any) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.running {
 		return
 	}
+
+	now := time.Now()
+
 	// Copy the params map so future mutations don't affect stored steps.
 	paramsCopy := make(map[string]any, len(params))
 	for k, v := range params {
 		paramsCopy[k] = v
 	}
+
+	// Compute human delay: time elapsed since the previous step capture.
+	// The first step always has HumanDelayMs=0.
+	var humanDelayMs int
+	if !r.lastCaptureTime.IsZero() {
+		humanDelayMs = int(now.Sub(r.lastCaptureTime).Milliseconds())
+	}
+	r.lastCaptureTime = now
+
 	step := Step{
-		Index:  len(r.steps),
-		Tool:   tool,
-		Params: paramsCopy,
+		Index:        len(r.steps),
+		Tool:         tool,
+		Params:       paramsCopy,
+		WaitFor:      InferWaitFor(tool),
+		HumanDelayMs: humanDelayMs,
 	}
 
 	// For _ref tools, attach a fingerprint so replay can find the element.

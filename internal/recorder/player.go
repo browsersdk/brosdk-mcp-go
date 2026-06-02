@@ -35,16 +35,20 @@ type ReplayResult struct {
 
 // ReplayOptions controls replay behavior.
 type ReplayOptions struct {
-	EnvID       string
-	Variables   map[string]string
-	StopOnError bool
-	StepDelay   time.Duration
+	EnvID          string
+	Variables      map[string]string
+	StopOnError    bool
+	StepDelay      time.Duration
+	ApplyHumanDelay bool // if true, insert recorded human pauses during replay (default true)
 }
 
 // Player replays scene steps through the dispatch function.
 type Player struct {
 	mgr      *brosdk.Manager
 	dispatch DispatchFunc
+	// guardFn allows tests to override the waitFor logic.
+	// When nil (production), executeGuard is used directly.
+	guardFn func(mgr *brosdk.Manager, envID string, g *WaitGuard) error
 }
 
 // NewPlayer creates a Player that routes steps through dispatch.
@@ -120,7 +124,34 @@ func (p *Player) executeStep(step Step, opts ReplayOptions) (sr StepResult) {
 		sr.Result = resultText
 	}
 
-	// Pause between steps to let the browser settle.
+	// WaitFor guard: block until the post-step condition is satisfied.
+	// This is the primary reliability mechanism — it replaces blind sleep
+	// with condition-based waiting (readyState, element existence, etc.).
+	if sr.Ok && !step.WaitFor.IsNone() && p.mgr != nil {
+		exec := p.guardFn
+		if exec == nil {
+			exec = executeGuard
+		}
+		if guardErr := exec(p.mgr, opts.EnvID, step.WaitFor); guardErr != nil {
+			// Guard failure is a soft error: the step itself succeeded,
+			// but the expected side effect didn't materialize. Log it as
+			// an annotation so the caller can decide whether to stop.
+			sr.Result = fmt.Sprintf(`%s{"guardWarn":%q}`, sr.Result, guardErr.Error())
+		}
+	}
+
+	// Human delay: simulate the natural pause the human took between actions.
+	// Capped at 3s to avoid unnaturally long waits on slow recordings.
+	if sr.Ok && opts.ApplyHumanDelay && step.HumanDelayMs > 0 {
+		d := step.HumanDelayMs
+		if d > 3000 {
+			d = 3000
+		}
+		time.Sleep(time.Duration(d) * time.Millisecond)
+	}
+
+	// Blind step delay (fallback). In practice the WaitFor guard already
+	// covers most cases; this is a small safety margin.
 	time.Sleep(opts.StepDelay)
 
 	return sr
