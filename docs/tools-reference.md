@@ -82,8 +82,8 @@
 | Tool | Parameters | Description |
 |------|-----------|-------------|
 | `browser_upload_file` | `envId`, `selector`, `files[]` (required), `sessionId` | Upload files to file input |
-| `browser_screenshot` | `envId` (required), `path`, `format`, `quality`, `fullPage`, `sessionId` | Take screenshot |
-| `browser_pdf` | `envId`, `path` (required), `sessionId` | Generate PDF |
+| `browser_screenshot` | `envId` (required), `path`, `dir`, `format`, `quality`, `fullPage`, `sessionId` | Screenshot, defaults to workDir/screenshots/, returns absolute path |
+| `browser_pdf` | `envId` (required), `path`, `sessionId` | Generate PDF, defaults to workDir/pdfs/output.pdf, returns absolute path |
 
 ### 3.7 Text Finding / Scripting
 

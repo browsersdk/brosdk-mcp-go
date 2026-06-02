@@ -228,8 +228,8 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | Tool                | 参数                                                             | 说明                      |
 |---------------------|-----------------------------------------------------------------|---------------------------|
 | `browser_upload_file`| `envId`, `selector`, `files` (必填), `sessionId`                | 上传文件                  |
-| `browser_screenshot` | `envId` (必填), `path`, `format`, `quality`, `fullPage`, `sessionId` | 截图，支持全页/JPEG      |
-| `browser_pdf`       | `envId`, `path` (必填), `sessionId`                              | 生成 PDF                  |
+| `browser_screenshot` | `envId` (必填), `path`, `dir`, `format`, `quality`, `fullPage`, `sessionId` | 截图，默认保存至 workDir/screenshots/，返回绝对路径 |
+| `browser_pdf`       | `envId` (必填), `path`, `sessionId`                              | 生成 PDF，默认保存至 workDir/pdfs/output.pdf，返回绝对路径 |
 
 #### 文本查找/脚本
 

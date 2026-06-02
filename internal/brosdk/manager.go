@@ -15,6 +15,7 @@ type Manager struct {
 	debugPorts     map[string]int         // envId → remoteDebuggingPort (from browser-open-success)
 	activeSessions map[string]string      // envId → active CDP sessionId (legacy)
 	browsers       map[string]*browserTab // envId → chromedp resources
+	workDir        string                 // base path for screenshots/PDFs output
 }
 
 // NewManager creates an empty Manager. Call Load before any SDK operations.
@@ -57,6 +58,7 @@ func (m *Manager) OnEvent(fn func(Event)) {
 // When UserSig is empty and ApiKey is provided, a userSig is
 // automatically fetched from the BroSDK API before init.
 func (m *Manager) Init(opts InitOptions) (*Response, error) {
+	m.workDir = opts.WorkDir
 	if opts.UserSig == "" && opts.ApiKey != "" {
 		us, err := fetchUserSig(opts.ApiKey)
 		if err != nil {

@@ -914,7 +914,7 @@ func (m *Manager) Screenshot(envID, sessionID string, opts ScreenshotOptions) (s
 	if outPath == "" {
 		dir := opts.Dir
 		if dir == "" {
-			dir = "."
+			dir = filepath.Join(m.workDir, "screenshots")
 		}
 		os.MkdirAll(dir, 0755)
 		outPath = filepath.Join(dir, fmt.Sprintf("screenshot.%s", format))
@@ -927,7 +927,8 @@ func (m *Manager) Screenshot(envID, sessionID string, opts ScreenshotOptions) (s
 		return "", fmt.Errorf("write screenshot: %w", err)
 	}
 
-	return outPath, nil
+	absPath, _ := filepath.Abs(outPath)
+	return absPath, nil
 }
 
 // PDF generates a PDF of the current page.
@@ -957,17 +958,19 @@ func (m *Manager) PDF(envID, sessionID, path string) (string, error) {
 
 	outPath := path
 	if outPath == "" {
-		outPath = "output.pdf"
+		outPath = filepath.Join(m.workDir, "pdfs", "output.pdf")
 	}
 	if !strings.HasSuffix(outPath, ".pdf") {
 		outPath += ".pdf"
 	}
+	os.MkdirAll(filepath.Dir(outPath), 0755)
 
 	if err := os.WriteFile(outPath, buf, 0644); err != nil {
 		return "", fmt.Errorf("write pdf: %w", err)
 	}
 
-	return outPath, nil
+	absPath, _ := filepath.Abs(outPath)
+	return absPath, nil
 }
 
 // ---------- navigation helpers ----------

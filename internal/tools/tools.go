@@ -490,14 +490,14 @@ func All() []mcp.ToolDef {
 		},
 		{
 			Name:        "browser_screenshot",
-			Description: "Take a screenshot of the current page. Supports PNG/JPEG, full-page capture, element clipping, and annotation. Saves to disk and returns the file path.",
+			Description: "Take a screenshot of the current page. Saves to workDir/screenshots/ (auto-created). Returns absolute path for agent reading.",
 			InputSchema: schema(`{
 				"type":"object",
 				"required":["envId"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
-					"path":{"type":"string","description":"Output file path (auto-generated if omitted)"},
-					"dir":{"type":"string","description":"Directory for auto-named screenshots (default: '.')"},
+					"path":{"type":"string","description":"Output file path (auto-generated under workDir/screenshots/ if omitted)"},
+					"dir":{"type":"string","description":"Directory for auto-named screenshots (default: workDir/screenshots/)"},
 					"format":{"type":"string","description":"Image format: 'png' (default) or 'jpeg'"},
 					"quality":{"type":"integer","description":"JPEG quality 0-100 (jpeg only)"},
 					"fullPage":{"type":"boolean","description":"Capture the full scrollable page"},
@@ -508,13 +508,13 @@ func All() []mcp.ToolDef {
 		},
 		{
 			Name:        "browser_pdf",
-			Description: "Generate a PDF of the current page. Saves to disk and returns the file path.",
+			Description: "Generate a PDF of the current page. Saves to workDir/pdfs/ (auto-created). Returns absolute path for agent reading.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","path"],
+				"required":["envId"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
-					"path":{"type":"string","description":"Output PDF file path"},
+					"path":{"type":"string","description":"Output PDF file path (default: workDir/pdfs/output.pdf)"},
 					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
 				}
 			}`),
@@ -1327,11 +1327,11 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return fmt.Sprintf(`{"path":%q}`, outPath), nil
 
 	case "browser_pdf":
-		envID, path := str(p, "envId"), str(p, "path")
-		if envID == "" || path == "" {
-			return "", fmt.Errorf("envId and path are required")
+		envID := str(p, "envId")
+		if envID == "" {
+			return "", fmt.Errorf("envId is required")
 		}
-		outPath, err := mgr.PDF(envID, str(p, "sessionId"), path)
+		outPath, err := mgr.PDF(envID, str(p, "sessionId"), str(p, "path"))
 		if err != nil {
 			return "", err
 		}
