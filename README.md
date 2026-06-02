@@ -13,11 +13,11 @@
 |------|------|--------|
 | **README.md**（本文件） | 项目总览、API 速查、配置、运行 | 首次了解项目 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计、技术栈、设计决策 | 理解实现原理 / 贡献代码 |
-| [docs/tools-reference.md](docs/tools-reference.md) | 59 个 MCP Tool 完整 API 参考 | 查找特定 tool 的参数/返回值 |
+| [docs/tools-reference.md](docs/tools-reference.md) | 65 个 MCP Tool 完整 API 参考 | 查找特定 tool 的参数/返回值 |
 
 ## 功能概览
 
-- 通过 59 个 MCP Tool 暴露 BroSDK 全部能力：SDK 生命周期、浏览器控制、浏览器高级操作、环境 CRUD、**浏览器录制回放**
+- 通过 65 个 MCP Tool 暴露 BroSDK 全部能力：SDK 生命周期、浏览器控制、浏览器高级操作、环境 CRUD、**浏览器录制回放**
 - 基于 [chromedp](https://github.com/chromedp/chromedp) 的高层浏览器操作——点击、输入、截图、PDF 等，无需手写 CDP 命令
 - 保留 `browser_command` 透明 CDP 代理，支持所有 DevTools 命令的高级/自定义场景
 - **录制回放**：`record_start` → 操作（自动捕获）→ `record_stop` 自动保存场景，`scene_replay` 一键回放，支持 `{{变量}}` 替换
@@ -146,7 +146,7 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | `/message` | POST | JSON-RPC 2.0 请求端点         |
 | `/health`  | GET  | 健康检查（返回 `200 OK`）      |
 
-## MCP Tools（59 个）
+## MCP Tools（65 个）
 
 ### SDK 信息（3 个）
 
@@ -166,7 +166,7 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | `browser_close`   | Async    | `envId` (必填)                             | 关闭浏览器环境                                   |
 | `browser_command` | Sync     | `envId`, `method` (必填), `params`, `sessionId` | 发送原始 CDP 命令到浏览器                       |
 
-### 浏览器高级操作（37 个）
+### 浏览器高级操作（43 个）
 
 #### 页面导航
 
@@ -239,6 +239,17 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | `browser_get_text`    | `envId`, `selector` (必填), `sessionId`          | 获取元素可见文本内容                        |
 | `browser_get_value`   | `envId`, `selector` (必填), `sessionId`          | 获取 input 元素的 value 属性               |
 | `browser_evaluate`      | `envId`, `expression` (必填), `sessionId`        | 执行 JavaScript 表达式并返回结果           |
+
+#### Agent 辅助工具
+
+| Tool                    | 参数                                              | 说明                                     |
+|-------------------------|--------------------------------------------------|------------------------------------------|
+| `browser_find_ref`      | `envId` (必填), `role`, `name`, `value`, `limit`   | 搜索 AX 树元素并返回 ref 列表（比完整 snapshot 小 80%） |
+| `browser_wait`          | `envId` (必填), `text`, `role`, `name`, `selector`, `timeout` | 轮询等待元素出现（200ms 间隔），替代盲 sleep |
+| `browser_page_state`    | `envId` (必填), `sessionId`                        | 返回 `{readyState, title, url}` 三元组，判断页面加载状态 |
+| `browser_exists`        | `envId` (必填), `role`, `name`, `value`, `selector`, `sessionId` | 快速检查元素是否存在，返回 boolean |
+| `browser_dialog`        | `envId` (必填), `action`, `promptText`, `sessionId` | 读取/接受/取消浏览器弹窗（alert/confirm/prompt） |
+| `browser_fill_form`     | `envId` (必填), `fields` (必填), `submitSelector`   | 批量填充多字段表单，一次调用替代多次 fill/type |
 
 ### 环境管理（5 个）
 
@@ -428,7 +439,7 @@ go test -v -run TestE2E_KeyboardInteraction -timeout 300s .
 go test -v -run TestE2E_SnapshotClickRef -timeout 300s .
 ```
 
-测试覆盖 59 个 MCP tools。仅 `browser_install`（纯异步、耗时过长）未纳入 E2E。
+测试覆盖 65 个 MCP tools。仅 `browser_install`（纯异步、耗时过长）未纳入 E2E。
 
 ## 目录结构
 
@@ -440,7 +451,7 @@ brosdk-mcp-go/
 ├── README_EN.md
 ├── docs/
 │   ├── ARCHITECTURE.md             # 架构设计 + 技术决策
-│   └── tools-reference.md          # 59 个 MCP Tool API 参考
+│   └── tools-reference.md          # 65 个 MCP Tool API 参考
 ├── e2e_test.go                    # E2E 共享基础设施（类型、fixture、helper）
 ├── e2e_record_test.go            # E2E: 录制回放完整流程
 ├── libs/
@@ -470,10 +481,11 @@ brosdk-mcp-go/
     │   ├── server.go              # MCP SSE 服务器（JSON-RPC 2.0 + 广播）
     │   └── inspector.go           # 内嵌 MCP Inspector Web UI
     └── tools/
-        └── tools.go               # 59 个 Tool 定义 + handler dispatch + Recorder hook
+        └── tools.go               # 65 个 Tool 定义 + handler dispatch + Recorder hook
     └── recorder/
         ├── recorder.go            # 录制单例（start/stop/capture/sanitize）
-        └── player.go              # 回放引擎（步骤执行 + 变量替换）
+        ├── player.go              # 回放引擎（步骤执行 + 变量替换）
+        └── guard.go               # WaitFor 守卫（readyState/exists 完成检测）
 ```
 
 ## 关键设计

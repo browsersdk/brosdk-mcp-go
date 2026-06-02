@@ -13,11 +13,11 @@ so AI Agents (Claude, CodeBuddy, etc.) can directly control fingerprint browser 
 |----------|---------|-------------|
 | **README.md** (this file) | Project overview, API reference, config, usage | First time |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, tech stack, design decisions | Understanding internals / contributing |
-| [docs/tools-reference.md](docs/tools-reference.md) | Full 50-tool API reference | Looking up specific tool params/returns |
+| [docs/tools-reference.md](docs/tools-reference.md) | Full 65-tool API reference | Looking up specific tool params/returns |
 
 ## Feature Overview
 
-- Expose all BroSDK capabilities through 50 MCP Tools: SDK lifecycle, browser control, high-level browser actions, environment CRUD
+- Expose all BroSDK capabilities through 65 MCP Tools: SDK lifecycle, browser control, high-level browser actions, environment CRUD, **browser record-replay**
 - High-level browser operations powered by [chromedp](https://github.com/chromedp/chromedp) — click, type, fill, screenshot, PDF, no raw CDP required
 - Retain `browser_command` transparent CDP proxy for advanced/custom DevTools scenarios
 - Async tools deliver results via SSE events, with support for long-wait operations
@@ -147,7 +147,7 @@ Real-time progress is printed to console during download.
 | `/message`     | POST   | JSON-RPC 2.0 request endpoint       |
 | `/health`      | GET    | Health check (returns `200 OK`)     |
 
-## MCP Tools (50)
+## MCP Tools (65)
 
 ### SDK Info (3)
 
@@ -167,7 +167,7 @@ Real-time progress is printed to console during download.
 | `browser_close`   | Async     | `envId` (required)                          | Close browser environment                       |
 | `browser_command` | Sync      | `envId`, `method` (required), `params`, `sessionId` | Send raw CDP command to browser          |
 
-### Browser Actions (37)
+### Browser Actions (43)
 
 #### Page Navigation
 
@@ -241,6 +241,17 @@ Real-time progress is printed to console during download.
 | `browser_get_value`   | `envId`, `selector` (required), `sessionId`       | Return value attribute of input element     |
 | `browser_evaluate`      | `envId`, `expression` (required), `sessionId`    | Execute JavaScript and return result      |
 
+#### Agent-Friendly Tools
+
+| Tool                    | Parameters                                       | Description                               |
+|-------------------------|--------------------------------------------------|-------------------------------------------|
+| `browser_find_ref`      | `envId` (required), `role`, `name`, `value`, `limit` | Search AX tree for elements and return refs (80% smaller than full snapshot) |
+| `browser_wait`          | `envId` (required), `text`, `role`, `name`, `selector`, `timeout` | Poll for element every 200ms until found; replaces blind sleep |
+| `browser_page_state`    | `envId` (required), `sessionId`                   | Return `{readyState, title, url}` to check page load state |
+| `browser_exists`        | `envId` (required), `role`, `name`, `value`, `selector`, `sessionId` | Quick boolean check if element exists |
+| `browser_dialog`        | `envId` (required), `action`, `promptText`, `sessionId` | Read/accept/dismiss dialogs (alert/confirm/prompt) |
+| `browser_fill_form`     | `envId` (required), `fields` (required), `submitSelector` | Batch fill form fields in one call instead of multiple fill/type |
+
 ### Environment Management (5)
 
 | Tool          | Sync/Async | Parameters                                  | Description                        |
@@ -250,6 +261,40 @@ Real-time progress is printed to console during download.
 | `env_update`  | Sync      | `envId` (required), `body`                  | Update environment config          |
 | `env_destroy` | Sync      | `envId` (required)                          | Permanently delete environment     |
 | `env_getinfo` | Sync      | `envId` (required)                          | Get single environment detail      |
+
+### Record & Replay (8)
+
+| Tool           | Sync/Async | Parameters                                       | Description                            |
+|----------------|----------|--------------------------------------------|---------------------------------|
+| `record_start` | Sync     | `envId` (required)                             | Start recording; subsequent operations are auto-captured |
+| `record_stop`  | Sync     | `name` (required), `description`              | Stop recording and auto-save to `scenes/{name}.json` |
+| `record_status`| Sync     | —                                          | Check current recording status |
+| `scene_list`   | Sync     | —                                          | List all saved scenes |
+| `scene_get`    | Sync     | `name` (required)                              | View scene details (step JSON) |
+| `scene_update` | Sync     | `name` (required), `scene` (required)             | Edit scene steps and metadata |
+| `scene_delete` | Sync     | `name` (required)                              | Delete a scene file |
+| `scene_replay` | Sync     | `name` (required), `envId` (required), `variables`, `stopOnError`, `stepDelay`, `applyHumanDelay` | Load scene and replay step by step. WaitFor guards ensure each step completes before next. Supports `{{variable}}` substitution |
+
+#### Recording Replay Workflow
+
+```
+1. record_start({envId:"env-1"})                    → Start recording
+2. browser_navigate/browser_click/browser_fill...    → Operations auto-captured (WaitFor guards auto-inferred)
+3. record_stop({name:"login_flow"})                  → Auto-save to workDir/scenes/login_flow.json
+4. scene_replay({name:"login_flow", envId:"env-2",   → Replay in new env with variables
+     variables:{"username":"alice","password":"s3cret"}})
+
+// Fast headless replay (skip human delay)
+5. scene_replay({name:"login_flow", envId:"env-3",
+     applyHumanDelay: false, stepDelay: 100})
+```
+
+- `envId`/`sessionId` are auto-stripped during recording; injected by caller at replay
+- Steps support `{{variable}}` placeholders for dynamic substitution
+- Max 200 steps; default 500ms inter-step delay
+- Scene files are JSON, human-readable, git-friendly
+- **WaitFor guard**: navigate/click steps auto-infer completion condition (`readyState:complete`), replay blocks instead of blind wait
+- **HumanDelay**: inter-step human pauses captured during recording (capped at 3s), replay enables by default (`applyHumanDelay: true`), can disable for speed
 
 ## Ref-Based Targeting
 
@@ -380,6 +425,10 @@ Test files are split into 8 files by feature area for easy focused runs:
 | `e2e_mouse_test.go` | `TestE2E_MouseInteraction` | dblclick/hover/hover_ref/find_click_text |
 | `e2e_scroll_test.go` | `TestE2E_ScrollAndScreenshot` | scroll/scroll_into_view/screenshot/PDF |
 | `e2e_drag_test.go` | `TestE2E_DragAndUpload` | drag/upload_file |
+| `e2e_agent_test.go` | `TestE2E_AgentFriendlyTools` | 7 agent-friendly tools (find_ref, wait, page_state, exists, dialog, fill_form, snapshot:interactiveOnly) |
+| `e2e_record_test.go` | `TestE2E_RecordReplay_FullFlow` | record_start → ops → record_stop → scene_replay |
+| | `TestE2E_RecordReplay_VariableSubstitution` | Variable substitution: `{{username}}`/`{{password}}` |
+| | `TestE2E_RecordReplay_StopOnError` | stopOnError behaviour |
 
 ```bash
 # Run all e2e tests (requires Windows + DLL + valid apiKey)
@@ -391,7 +440,7 @@ go test -v -run TestE2E_KeyboardInteraction -timeout 300s .
 go test -v -run TestE2E_SnapshotClickRef -timeout 300s .
 ```
 
-49 out of 50 MCP tools covered (98%); only `browser_install` (async, long-running) is not covered.
+64 out of 65 MCP tools covered (98%); only `browser_install` (async, long-running) is not covered. 53 tests total (13 agent-friendly + 40 recorder unit).
 
 ## Project Layout
 
@@ -403,7 +452,7 @@ brosdk-mcp-go/
 ├── README_EN.md
 ├── docs/
 │   ├── ARCHITECTURE.md             # Architecture & design decisions
-│   └── tools-reference.md          # 50 MCP Tool API reference
+│   └── tools-reference.md          # 65 MCP Tool API reference
 ├── e2e_test.go                    # E2E shared infrastructure (types, fixture, helpers)
 ├── e2e_basic_test.go              # E2E: SDK basics + CDP form tests
 ├── e2e_snapshot_test.go           # E2E: snapshot + click_ref workflow
@@ -412,6 +461,8 @@ brosdk-mcp-go/
 ├── e2e_mouse_test.go              # E2E: mouse interactions
 ├── e2e_scroll_test.go             # E2E: scroll + screenshot + PDF
 ├── e2e_drag_test.go               # E2E: drag + file upload
+├── e2e_agent_test.go              # E2E: agent-friendly tools
+├── e2e_record_test.go             # E2E: record-replay full flow
 ├── libs/
 │   ├── brosdk.h                   # C header (reference)
 │   ├── windows-x64/
@@ -439,7 +490,11 @@ brosdk-mcp-go/
     │   ├── server.go              # MCP SSE server (JSON-RPC 2.0 + broadcast)
     │   └── inspector.go           # Built-in MCP Inspector Web UI
     └── tools/
-        └── tools.go               # 50 tool definitions + handler dispatch
+        └── tools.go               # 65 tool definitions + handler dispatch + Recorder hook
+    └── recorder/
+        ├── recorder.go            # Record singleton (start/stop/capture/sanitize)
+        ├── player.go              # Replay engine (step execution + variable substitution)
+        └── guard.go               # WaitFor guard (readyState/exists completion detection)
 ```
 
 ## Key Design Decisions
@@ -455,6 +510,9 @@ brosdk-mcp-go/
 | **CDP Connection Pool**    | WebSocket connections cached per `envId`, auto-reconnect on failure (one retry) |
 | **Auto userSig**           | When `apiKey` is provided, `Init()` auto-fetches userSig via BroSDK HTTP API |
 | **Auto Debug Port**        | `browser_open` always injects `--remote-debugging-port=0`    |
+| **Record-Replay Hook**     | Handler layer auto-captures all browser actions; Dispatch & Player share same switch |
+| **WaitFor Guard**          | Steps auto-infer completion conditions (readyState/exists); replay blocks instead of blind sleep |
+| **HumanDelay**             | Inter-step human pauses captured during recording (capped 3s); replay toggle via `applyHumanDelay` |
 
 ## Dependencies
 
