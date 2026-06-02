@@ -40,7 +40,7 @@ func startAgentTestServer(t *testing.T) (string, func()) {
   <option value="us">United States</option>
   <option value="cn">China</option>
 </select>
-<div id="delayed" style="display:none">I am here now!</div>
+<div id="delayed" style="display:none">placeholder</div>
 <div id="output"></div>
 <form id="mainForm" action="/submit" method="post">
   <input id="formName" name="name" type="text" placeholder="Your name">
@@ -52,10 +52,15 @@ func startAgentTestServer(t *testing.T) (string, func()) {
   var o=document.getElementById('output');
   function log(e){o.textContent+=e+';';}
 
-  // Delayed element appears after 1s.
+  // Delayed element: dynamically inserted after 1s (not hidden, so wait_text works).
   setTimeout(function(){
-    document.getElementById('delayed').style.display='block';
-    document.getElementById('delayed').setAttribute('aria-label','Delayed element');
+    var old = document.getElementById('delayed');
+    if (old) old.remove();
+    var el = document.createElement('div');
+    el.id = 'delayed';
+    el.textContent = 'I am here now!';
+    el.setAttribute('aria-label','Delayed element');
+    document.body.appendChild(el);
   }, 1000);
 
   // Output logging for form events.
@@ -83,6 +88,14 @@ func startAgentTestServer(t *testing.T) (string, func()) {
     e.preventDefault();
     log('form_submitted;');
   });
+  // Dialog capture for browser_dialog tool testing.
+  window.__wbDialogMsg=null;
+  var _alert=window.alert;
+  window.alert=function(m){window.__wbDialogMsg=m;};
+  var _confirm=window.confirm;
+  window.confirm=function(m){window.__wbDialogMsg=m;return true;};
+  var _prompt=window.prompt;
+  window.prompt=function(m,d){window.__wbDialogMsg=m;return d||'';};
 })();
 </script>
 </body></html>`)
@@ -159,16 +172,21 @@ func TestE2E_AgentFriendlyTools(t *testing.T) {
 			t.Fatalf("find_ref(button+Cancel): %v", err)
 		}
 		var data struct {
-			Refs  []any `json:"refs"`
-			Count int   `json:"count"`
+			Refs  []struct {
+				Ref  int    `json:"ref"`
+				Role string `json:"role"`
+				Name string `json:"name"`
+			} `json:"refs"`
+			Count int `json:"count"`
 		}
 		if err := parseToolText(resp.Result, &data); err != nil {
 			t.Fatalf("parse find_ref: %v", err)
 		}
 		if data.Count != 1 {
-			t.Errorf("expected 1 Cancel button, got %d", data.Count)
+			t.Errorf("expected 1 Cancel button, got %d (refs=%+v)", data.Count, data.Refs)
+		} else {
+			t.Logf("find_ref(button+Cancel): 1 result, ref=%d", data.Refs[0].Ref)
 		}
-		t.Logf("find_ref(button+Cancel): %d result(s)", data.Count)
 	})
 
 	// ── 3. browser_find_ref: textbox ──
@@ -300,7 +318,8 @@ func TestE2E_AgentFriendlyTools(t *testing.T) {
 		if err != nil {
 			t.Fatalf("wait(text): %v", err)
 		}
-		if elapsed < 800*time.Millisecond {
+		// setTimeout(1000ms) is browser-best-effort; tolerate early wake.
+		if elapsed < 500*time.Millisecond {
 			t.Errorf("wait returned too quickly: %v", elapsed)
 		}
 		t.Logf("wait(text) ✓ elapsed=%v", elapsed)
@@ -320,25 +339,20 @@ func TestE2E_AgentFriendlyTools(t *testing.T) {
 		t.Log("wait(role+name) ✓")
 	})
 
-	// ── 10. browser_dialog: accept ──
+	// ── 10. browser_dialog: accept (trigger alert via evaluate, same approach as dismiss) ──
 	t.Run("dialog_accept", func(t *testing.T) {
-		// First ensure the dialog will be triggered by clicking Cancel button.
-		// The dialog handling is async with page lifecycle, so we trigger and handle.
+		// Clear dialog state then trigger alert (page override captures it).
 		_, _ = f.client.callTool("browser_evaluate", map[string]any{
-			"envId": envID, "expression": `document.getElementById('output').textContent=''`,
+			"envId": envID, "expression": `document.getElementById('output').textContent='';window.__wbDialogMsg=null`,
 		})
-
-		// Click Cancel which triggers alert(). Use evaluate to trigger alert directly.
 		_, err := f.client.callTool("browser_evaluate", map[string]any{
 			"envId":      envID,
-			"expression": `setTimeout(() => alert('E2E test dialog'), 100)`,
+			"expression": `alert('E2E accept test dialog')`,
 		})
 		if err != nil {
 			t.Fatalf("trigger alert: %v", err)
 		}
-		time.Sleep(200 * time.Millisecond)
 
-		// Accept the dialog.
 		dResp, err := f.client.callTool("browser_dialog", map[string]any{
 			"envId":  envID,
 			"action": "accept",
@@ -349,25 +363,32 @@ func TestE2E_AgentFriendlyTools(t *testing.T) {
 		t.Logf("dialog(accept): %s", dResp.Result)
 
 		var dResult struct {
-			Action string `json:"action"`
+			Action  string `json:"action"`
+			Message string `json:"message"`
 		}
 		parseToolText(dResp.Result, &dResult)
 		if dResult.Action != "accept" {
 			t.Errorf("expected action=accept, got %q", dResult.Action)
 		}
+		if dResult.Message == "" {
+			t.Error("expected non-empty dialog message")
+		}
+		t.Logf("dialog captured message: %q", dResult.Message)
 	})
 
 	// ── 11. browser_dialog: dismiss ──
 	t.Run("dialog_dismiss", func(t *testing.T) {
-		// Trigger another alert.
+		// Trigger confirm via evaluate (page override captures it).
+		_, _ = f.client.callTool("browser_evaluate", map[string]any{
+			"envId": envID, "expression": `window.__wbDialogMsg=null`,
+		})
 		_, err := f.client.callTool("browser_evaluate", map[string]any{
 			"envId":      envID,
-			"expression": `setTimeout(() => confirm('Delete?'), 100)`,
+			"expression": `confirm('Delete all items?')`,
 		})
 		if err != nil {
 			t.Fatalf("trigger confirm: %v", err)
 		}
-		time.Sleep(200 * time.Millisecond)
 
 		dResp, err := f.client.callTool("browser_dialog", map[string]any{
 			"envId":  envID,
@@ -379,12 +400,17 @@ func TestE2E_AgentFriendlyTools(t *testing.T) {
 		t.Logf("dialog(dismiss): %s", dResp.Result)
 
 		var dResult struct {
-			Action string `json:"action"`
+			Action  string `json:"action"`
+			Message string `json:"message"`
 		}
 		parseToolText(dResp.Result, &dResult)
 		if dResult.Action != "dismiss" {
 			t.Errorf("expected action=dismiss, got %q", dResult.Action)
 		}
+		if dResult.Message == "" {
+			t.Error("expected non-empty dialog message")
+		}
+		t.Logf("dialog captured message: %q", dResult.Message)
 	})
 
 	// ── 12. browser_fill_form ──

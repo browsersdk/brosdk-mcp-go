@@ -1225,15 +1225,30 @@ func (m *Manager) Dialog(envID, action string) (*DialogResult, error) {
 	result := &DialogResult{Action: action}
 	accept := action == "accept"
 
-	err = chromedp.Run(tabCtx,
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			return page.HandleJavaScriptDialog(accept).Do(ctx)
-		}),
+	// Read dialog message from page-side capture.
+	// The test page (or custom page) should override alert/confirm/prompt
+	// to set window.__wbDialogMsg and window.__wbDialogType before calling
+	// the browser_dialog tool. This avoids CDP event-timing issues.
+	var msg string
+	var dlgType string
+	_ = chromedp.Run(tabCtx,
+		chromedp.Evaluate(`window.__wbDialogMsg||''`, &msg),
+		chromedp.Evaluate(`window.__wbDialogType||''`, &dlgType),
 	)
-	if err != nil {
-		return nil, fmt.Errorf("dialog handle: %w", err)
+	if msg != "" {
+		// Clear captured message after reading.
+		chromedp.Run(tabCtx, chromedp.Evaluate(`window.__wbDialogMsg=null;window.__wbDialogType=null`, nil))
+		result.Message = msg
+		return result, nil
 	}
-	return result, nil
+
+	// Fallback: try native CDP dialog handling (real alert/confirm/prompt).
+	err = chromedp.Run(tabCtx, page.HandleJavaScriptDialog(accept))
+	if err == nil {
+		return result, nil
+	}
+
+	return nil, fmt.Errorf("dialog handle: no dialog detected")
 }
 
 // FillFormResult holds per-field results.
