@@ -50,10 +50,20 @@ document.getElementById('btn2').addEventListener('click', function() {
 	return addr, func() { srv.Close() }
 }
 
-// findBackendDOMNodeID walks a parsed JSON tree from browser_snapshot and
-// returns the backendDOMNodeId for the first node whose name.value matches targetName.
-func findBackendDOMNodeID(tree []any, targetName string) (string, bool) {
-	for _, node := range tree {
+// findBackendDOMNodeID walks a parsed JSON tree from browser_snapshot
+// (format: {"nodes": [...]}) and returns the backendDOMNodeId for the first
+// node whose name.value matches targetName.
+func findBackendDOMNodeID(tree any, targetName string) (string, bool) {
+	// Unwrap {"nodes": [...]} wrapper.
+	wrapper, ok := tree.(map[string]any)
+	if !ok {
+		return "", false
+	}
+	nodes, ok := wrapper["nodes"].([]any)
+	if !ok {
+		return "", false
+	}
+	for _, node := range nodes {
 		if nodeMap, ok := node.(map[string]any); ok {
 			if ref, found := walkAXNode(nodeMap, targetName); found {
 				return ref, true
@@ -148,8 +158,8 @@ func TestE2E_SnapshotClickRef(t *testing.T) {
 	}
 	t.Logf("browser_snapshot: %d bytes", len(snapResp.Result))
 
-	// Parse the accessibility tree (GetFullAXTree returns []*AXNode, i.e. a JSON array).
-	var snapResult []any
+	// Parse the accessibility tree (wrapped in {"nodes": [...]}).
+	var snapResult map[string]any
 	if err := parseToolText(snapResp.Result, &snapResult); err != nil {
 		t.Fatalf("parse snapshot result: %v", err)
 	}

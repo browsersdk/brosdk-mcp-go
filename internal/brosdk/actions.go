@@ -244,7 +244,7 @@ func (m *Manager) Snapshot(envID, sessionID string) (json.RawMessage, error) {
 			if err != nil {
 				return err
 			}
-			b, err := json.Marshal(tree)
+			b, err := json.Marshal(map[string]any{"nodes": tree})
 			if err != nil {
 				return err
 			}

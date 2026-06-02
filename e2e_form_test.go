@@ -192,7 +192,7 @@ func TestE2E_FormElements(t *testing.T) {
 		if err != nil {
 			t.Fatalf("snapshot: %v", err)
 		}
-		var snapTree []any
+		var snapTree map[string]any
 		if err := parseToolText(snapResp.Result, &snapTree); err != nil {
 			t.Fatalf("parse snapshot: %v", err)
 		}
@@ -260,7 +260,7 @@ func TestE2E_FormElements(t *testing.T) {
 		if err != nil {
 			t.Fatalf("snapshot: %v", err)
 		}
-		var snapTree []any
+		var snapTree map[string]any
 		if err := parseToolText(snapResp.Result, &snapTree); err != nil {
 			t.Fatalf("parse snapshot: %v", err)
 		}
@@ -295,7 +295,7 @@ func TestE2E_FormElements(t *testing.T) {
 		if err != nil {
 			t.Fatalf("snapshot: %v", err)
 		}
-		var snapTree []any
+		var snapTree map[string]any
 		if err := parseToolText(snapResp.Result, &snapTree); err != nil {
 			t.Fatalf("parse snapshot: %v", err)
 		}
