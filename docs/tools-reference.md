@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-> 50 tools, 4 categories. All async tools return `reqId` immediately; results delivered via SSE `sdk-event`.
+> 65 tools, 4 categories + recorder/scene (9 tools). All async tools return `reqId` immediately; results delivered via SSE `sdk-event`.
 
 ## 1. SDK Info (3 tools)
 
@@ -20,7 +20,7 @@
 | `browser_close` | async | `envId` (required) | `reqId` | Close browser |
 | `browser_command` | sync | `envId`, `method` (required), `params`, `sessionId` | CDP response | Raw CDP command |
 
-## 3. Browser Actions (37 tools)
+## 3. Browser Actions (43 tools)
 
 ### 3.1 Page Navigation
 
@@ -30,7 +30,7 @@
 | `browser_reload` | `envId` (required), `sessionId` | Reload the current page |
 | `browser_back` | `envId` (required), `sessionId` | Navigate back in browser history |
 | `browser_forward` | `envId` (required), `sessionId` | Navigate forward in browser history |
-| `browser_snapshot` | `envId` (required), `sessionId` | Capture accessibility tree (AX Tree) with `backendDOMNodeId` |
+| `browser_snapshot` | `envId` (required), `sessionId`, `interactiveOnly` | Capture accessibility tree (AX Tree). `interactiveOnly=true` filters to interactive nodes only, reducing output 10-50x |
 
 ### 3.2 Mouse Actions
 
@@ -94,6 +94,19 @@
 | `browser_get_value` | `envId`, `selector` (required), `sessionId` | Return value attribute of input element |
 | `browser_evaluate` | `envId`, `expression` (required), `sessionId` | Execute JavaScript and return result |
 
+### 3.8 Agent-Friendly Tools (NEW)
+
+Designed for AI agent workflows — reduce token usage, simplify element targeting, and handle async page state.
+
+| Tool | Parameters | Returns | Description |
+|------|-----------|---------|-------------|
+| `browser_find_ref` | `envId` (required), `role`, `name`, `value` | `{refs[{ref,role,name,value}], count}` | Search AX tree by role/name/value; returns ref list for `_ref` tools |
+| `browser_wait` | `envId` (required), `text`, `role`, `name`, `timeoutMs` (default 5000) | `{found,elapsedMs}` | Poll snapshot until matching element appears |
+| `browser_page_state` | `envId` (required) | `{title, url, readyState}` | Fast page metadata — no snapshot overhead |
+| `browser_exists` | `envId` (required), `role`, `name` | `{exists}` | Boolean element existence check |
+| `browser_dialog` | `envId` (required), `action` (accept/dismiss) | `{action, message}` | Handle JS alert/confirm/prompt via page-side capture |
+| `browser_fill_form` | `envId` (required), `fields[{ref,value}]`, `submitRef` | `{filled, submitted}` | Batch fill form fields + optional submit |
+
 ## 4. Environment Management (5 tools)
 
 | Tool | Type | Parameters | Description |
@@ -103,6 +116,24 @@
 | `env_update` | sync | `envId` (required), `body` | Update environment config |
 | `env_destroy` | sync | `envId` (required) | Permanently delete environment |
 | `env_getinfo` | sync | `envId` (required) | Get single environment detail |
+
+## 5. Recorder & Scene (9 tools)
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `record_start` | `name` | Start recording browser actions |
+| `record_stop` | — | Stop recording, auto-save to `scenes/{name}.json` |
+| `record_status` | — | Get recording status |
+| `scene_list` | — | List all saved scenes |
+| `scene_get` | `name` (required) | Get scene details + steps |
+| `scene_update` | `name` (required), `steps`, ... | Update scene (steps, variables, etc.) |
+| `scene_delete` | `name` (required) | Delete a scene |
+| `scene_replay` | `name` (required), `envId`, `variables`, `stopOnError`, `stepDelay`, `applyHumanDelay` | Replay scene with **WaitFor guards** + optional human delay |
+| `scene_save` | `name` (required), `steps` | Manually save scene (rare; `record_stop` auto-saves) |
+
+**Replay features (NEW):**
+- **WaitFor guard**: Steps auto-infer post-conditions (e.g. `readyState:complete` after navigate/click). Replay blocks until satisfied — no blind sleep.
+- **HumanDelay**: Recorded inter-step human pauses captured as `HumanDelayMs`. Replay optionally applies them (`applyHumanDelay=true`, cap 3s).
 
 ---
 

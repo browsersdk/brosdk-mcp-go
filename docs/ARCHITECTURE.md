@@ -26,7 +26,7 @@ brosdk-mcp-go/
 │   ├── tools-reference.md      # 50 MCP Tool API 参考
 │   └── ARCHITECTURE.md         # 本文档
 ├── e2e_test.go                 # E2E 共享基础设施
-├── e2e_*_test.go               # 8 个按功能拆分的 E2E 测试文件
+├── e2e_*_test.go               # 10 个按功能拆分的 E2E 测试文件（含 agent 工具）
 ├── libs/
 │   ├── brosdk.h                       # C 头文件（参考）
 │   ├── windows-x64/brosdk.dll         # Windows x64 原生库
@@ -44,7 +44,7 @@ brosdk-mcp-go/
 │   │   ├── http.go             # HTTP 客户端（fetchUserSig API）
 │   │   ├── cdp.go              # CDP WebSocket 代理（windows || darwin）
 │   │   ├── cdp_unsupported.go  # CDP 桩（其他平台）
-│   │   ├── actions.go          # chromedp 高层浏览器操作（37 个 action）
+│   │   ├── actions.go          # chromedp 高层浏览器操作（43 个 action + 6 agent-friendly 工具）
 │   │   └── actions_unsupported.go # actions 桩
 │   ├── config/
 │   │   └── config.go           # config.local.json → config.json 加载
@@ -52,10 +52,15 @@ brosdk-mcp-go/
 │   │   ├── server.go           # SSE server + session 管理 + JSON-RPC dispatch
 │   │   └── inspector.go        # 内嵌 MCP Inspector Web UI（自包含 HTML）
 │   └── tools/
-│       └── tools.go            # 59 Tool 定义 + handler dispatch + Recorder hook
+│       └── tools.go            # 65 Tool 定义 + handler dispatch + Recorder hook
 │   └── recorder/
-│       ├── recorder.go         # 录制单例：start/stop/capture/sanitize
-│       └── player.go           # 回放引擎：步骤执行 + 变量替换
+│       ├── recorder.go         # 录制单例：start/stop/capture/sanitize + WaitFor 推断 + HumanDelay 捕获
+│       ├── player.go           # 回放引擎：步骤执行 + WaitFor 守卫 + 变量替换 + human delay
+│       ├── guard.go            # WaitGuard 类型 + 4 种守卫实现 (readyState/exists/wait/none)
+│       ├── refconv.go          # 录制指纹提取（_ref 工具 ↔ AX tree 匹配）
+│       ├── recorder_test.go    # 录制单元测试
+│       ├── player_test.go      # 回放单元测试
+│       └── guard_test.go       # WaitFor/HumanDelay 单元测试
 ```
 
 ## MCP Transport：仅 SSE
@@ -123,7 +128,22 @@ Native result_callback (C)
 - **Chromedp 原生 Action**：Click, DoubleClick, Focus, SendKeys, Clear, SetValue, ScrollIntoView, SetUploadFiles, CaptureScreenshot, FullScreenshot, KeyEvent, Navigate, WaitReady
 - **cdproto 直接调用**：Snapshot (`accessibility.GetFullAXTree`), Hover (`input.DispatchMouseEvent`), 键盘 (`input.DispatchKeyEvent`), PDF (`page.PrintToPDF`), FindClickText (`dom.PerformSearch`)
 - **最小 Evaluate**：Scroll (`window.scrollBy`), Drag (DataTransfer 事件链), Check/Uncheck (checked 状态检查) — 单行 JS
-- **Ref 定位**：`cdpdom.ResolveNode` → `cdpdom.RequestNode` → `chromedp.ByNodeID`，7 个 `_ref` 变体工具
+- **Ref 定位**：`cdpdom.ResolveNode` → `cdpdom.RequestNode` → `chromedp.ByNodeID`，8 个 `_ref` 变体工具
+
+### Agent-Friendly 工具（6 个新增）
+
+为 AI Agent 工作流优化，减少 token 消耗、简化元素定位、处理异步页面状态：
+
+| 工具 | 功能 | 关键设计 |
+|------|------|------|
+| `browser_find_ref` | AX tree 按 role/name/value 搜索 | 返回 `ref` 列表供 `_ref` 工具使用，避免 LLM 手写 selector |
+| `browser_wait` | 轮询等待元素出现 | 200ms 间隔，内部复用 `Snapshot(interactiveOnly)` 降开销 |
+| `browser_page_state` | 快速 `{title, url, readyState}` | 无 snapshot 开销，供 guard 和 agent 判断页面状态 |
+| `browser_exists` | 布尔检查元素存在 | 轻量，不返回树结构 |
+| `browser_dialog` | 处理 JS alert/confirm/prompt | 页面侧 override 捕获 → `__wbDialogMsg` → 读取后清除。避免 CDP 事件时序问题 |
+| `browser_fill_form` | 批量填表 + 可选提交 | 单次调用完成多字段填充，减少 tool call 往返 |
+
+`browser_snapshot` 增强：`interactiveOnly=true` 仅返回可交互节点，输出缩减 10-50x。内部由 `filterInteractiveNodes()` 递归过滤。
 
 ## browser_command CDP 代理
 
@@ -141,13 +161,39 @@ Agent calls record_start
 Handler() → Recorder hook (capture every browser action)
         ↓                      ↓
   Dispatch(mgr, name, params)  Recorder.Capture(name, sanitized)
-        ↓
+        ↓                           ↓
 Agent calls record_stop → auto-save to scenes/{name}.json
         ↓
 Agent calls scene_replay → Player.LoadScene → Player.Replay
         ↓
-  For each step: inject envId → substitute vars → Dispatch(mgr, name, params)
+  For each step: resolve ref → dispatch → WaitFor guard → HumanDelay → next step
 ```
+
+### 步骤完成判断：WaitFor 守卫（NEW）
+
+回放每步不再依赖固定 sleep。`Step.WaitFor` 声明该步完成后期望的页面状态，Player 在 dispatch 返回后阻塞等待条件满足。
+
+4 种守卫类型：
+
+| Type | 实现 | 默认超时 | 场景 |
+|------|------|:--:|------|
+| `readyState` | 轮询 `PageState()` 直到 `readyState` 匹配 | 10s | navigate → 等页面加载完成 |
+| `exists` | 轮询 `Exists()` 直到元素出现 | 5s | click → 等结果元素渲染 |
+| `wait` | 调用 `Wait()` 内部轮询 | 5s | 通用等待（text/role/name） |
+| `none` | 不等待 | — | 无副作用的工具 |
+
+录制时自动推断（`InferWaitFor`）：
+- navigate/open → `readyState:complete` (10s)
+- click/back/forward/reload → `readyState:complete` (5s)
+- 其他 → `none`
+
+Guard 失败处理：注入 `guardWarn` 注解（软错误），不中断回放。
+
+### HumanDelay 机制（NEW）
+
+录制时 `Capture()` 记录 `time.Since(lastCaptureTime)` → `Step.HumanDelayMs`。
+回放时若 `ReplayOptions.ApplyHumanDelay=true`（默认），在 WaitFor 满足后插入 humanDelay（上限 3s）。
+关闭后全速运行，适合回归测试。
 
 ### 关键设计
 
@@ -157,6 +203,8 @@ Agent calls scene_replay → Player.LoadScene → Player.Replay
 - **变量替换**：步骤中的 `{{variable}}` 占位符在回放时被 `scene_replay({variables:{...}})` 替换
 - **envId 注入**：录制时自动去除 `envId`，回放时由调用方注入
 - **场景文件**：JSON 格式，可读、可 git 管理、可手写编辑
+- **WaitFor 守卫**：回放可靠性核心 — 条件驱动等待替代固定 sleep，自动推断 + 可手动编辑
+- **HumanDelay 模拟**：录制时捕获人类操作间隔，回放时可选启用（cap 3s），平衡真实感与效率
 
 ### 工具分类（9 个）
 
@@ -181,3 +229,6 @@ Agent calls scene_replay → Player.LoadScene → Player.Replay
 | **仅 SSE transport** | 不需要 stdio，AI Agent 通过 HTTP 连接更灵活 |
 | **录制回放 Hook 模式** | Handler 层自动捕获，Dispatch 与 Player 共享同一 switch，零代码重复 |
 | **record_stop 自动保存** | 简化 Agent 工作流，减少 tool call 次数，避免步骤数组在网络间传输 |
+| **WaitFor 守卫代替盲等** | 条件驱动等待（readyState/exists/wait）替代固定 sleep，解决 AJAX/SPA 可靠性问题 |
+| **HumanDelay 可选模拟** | 录制时捕获人类节奏，回放时可开关（cap 3s），回归测试 vs 演示场景灵活切换 |
+| **Dialog 页面侧捕获** | JS override alert/confirm/prompt → `__wbDialogMsg`，避免 CDP 事件时序竞争 |
