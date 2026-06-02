@@ -35,7 +35,7 @@ func TestE2E_RecordReplay_FullFlow(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// ── 1. record_start ──
-	resp, err := f.client.callTool("record_start", map[string]any{"envId": envID})
+	resp, err := f.client.callTool("record_start", map[string]any{})
 	if err != nil {
 		t.Fatalf("record_start: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestE2E_RecordReplay_VariableSubstitution(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Record only the fill + click (using variables).
-	f.client.callTool("record_start", map[string]any{"envId": envID})
+	f.client.callTool("record_start", map[string]any{})
 
 	_, err = f.client.callTool("browser_fill", map[string]any{
 		"envId":    envID,
@@ -287,7 +287,7 @@ func TestE2E_RecordReplay_StopOnError(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Record: type + type (without navigate, so second depends on first context)
-	f.client.callTool("record_start", map[string]any{"envId": envID})
+	f.client.callTool("record_start", map[string]any{})
 
 	f.client.callTool("browser_fill", map[string]any{
 		"envId":    envID,

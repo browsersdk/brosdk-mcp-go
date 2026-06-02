@@ -34,6 +34,19 @@ func mockDispatch() (DispatchFunc, *[]struct {
 	return fn, &calls
 }
 
+// mockDispatchWithPanic returns a dispatch that panics for the given tool.
+func mockDispatchWithPanic(panicTool, panicMsg string) (DispatchFunc, *int) {
+	callCount := 0
+	fn := func(mgr *brosdk.Manager, tool string, params map[string]any) (string, error) {
+		callCount++
+		if tool == panicTool {
+			panic(panicMsg)
+		}
+		return `{"ok":true}`, nil
+	}
+	return fn, &callCount
+}
+
 func TestPlayer_Replay(t *testing.T) {
 	dispatch, calls := mockDispatch()
 	p := &Player{dispatch: dispatch}
@@ -196,7 +209,7 @@ func TestLoadScene(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.json")
 
-	content := `{"version":1,"name":"test","envId":"env-x","createdAt":"2025-01-01T00:00:00Z","steps":[{"index":0,"tool":"browser_navigate","params":{"url":"https://example.com"}}]}`
+	content := `{"version":1,"name":"test","createdAt":"2025-01-01T00:00:00Z","steps":[{"index":0,"tool":"browser_navigate","params":{"url":"https://example.com"}}]}`
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatalf("write test scene: %v", err)
 	}
@@ -266,6 +279,38 @@ func TestSubstituteVars_NoVars(t *testing.T) {
 	}
 }
 
+func TestPlayer_PanicRecovery(t *testing.T) {
+	dispatch, calls := mockDispatchWithPanic("browser_navigate", "BOOM")
+	p := &Player{dispatch: dispatch}
+
+	scene := &Scene{
+		Version: 1,
+		Name:    "crash-test",
+		Steps: []Step{
+			{Index: 0, Tool: "browser_navigate", Params: map[string]any{"url": "https://example.com"}},
+		},
+	}
+
+	result := p.Replay(scene, ReplayOptions{EnvID: "env-1", StepDelay: 1 * time.Millisecond})
+	if result.Ok {
+		t.Fatal("replay should report failure after panic")
+	}
+	if len(result.Steps) != 1 {
+		t.Fatalf("expected 1 step result, got %d", len(result.Steps))
+	}
+	sr := result.Steps[0]
+	if sr.Ok {
+		t.Fatal("step should not be ok after panic")
+	}
+	if sr.Error == "" {
+		t.Fatal("step should have error message after panic")
+	}
+	if result.Executed != 0 || result.Failed != 1 {
+		t.Fatalf("expected 0 executed / 1 failed, got %d/%d", result.Executed, result.Failed)
+	}
+	_ = calls // dispatch was called and panicked, but callCount won't be incremented due to panic
+}
+
 func TestStepResult_Timing(t *testing.T) {
 	p := &Player{dispatch: func(mgr *brosdk.Manager, tool string, params map[string]any) (string, error) {
 		return `{"ok":true}`, nil
@@ -284,5 +329,30 @@ func TestStepResult_Timing(t *testing.T) {
 	}
 	if result.Steps[0].DurationMs < 0 {
 		t.Fatal("duration should be non-negative")
+	}
+}
+
+// TestPlayer_RefKeepsFingerprint verifies that when a _ref step has no mgr
+// (i.e. snapshot resolution is skipped), the original ref is dispatched as-is.
+func TestPlayer_RefWithoutMgr(t *testing.T) {
+	dispatch, calls := mockDispatch()
+	p := &Player{dispatch: dispatch, mgr: nil} // no mgr → fingerprint resolution skipped
+
+	fp := &ElementFingerprint{Role: "button", Name: "Login"}
+	scene := &Scene{
+		Version: 1,
+		Name:    "ref-test",
+		Steps: []Step{
+			{Index: 0, Tool: "browser_click_ref", Params: map[string]any{"ref": "42"}, Fingerprint: fp},
+		},
+	}
+
+	result := p.Replay(scene, ReplayOptions{EnvID: "env-1", StepDelay: 1 * time.Millisecond})
+	if !result.Ok {
+		t.Fatal("replay should succeed even without fingerprint resolution")
+	}
+	// The original ref should have been kept.
+	if (*calls)[0].Params["ref"] != "42" {
+		t.Fatalf("ref should stay '42' when mgr is nil, got %v", (*calls)[0].Params["ref"])
 	}
 }

@@ -31,10 +31,27 @@ type browserTab struct {
 }
 
 // ensureBrowser returns the browserTab for envID, creating one if needed.
+// If the cached allocator is stale (context cancelled / connection lost),
+// it is torn down and a fresh one is created.
 func (m *Manager) ensureBrowser(envID string) (*browserTab, error) {
 	m.mu.RLock()
 	bt := m.browsers[envID]
 	m.mu.RUnlock()
+
+	// Check cached entry: if the allocator context is already done, discard it.
+	if bt != nil && bt.allocCtx.Err() != nil {
+		if bt.allocCancel != nil {
+			bt.allocCancel()
+		}
+		if bt.tabCancel != nil {
+			bt.tabCancel()
+		}
+		m.mu.Lock()
+		delete(m.browsers, envID)
+		m.mu.Unlock()
+		bt = nil
+	}
+
 	if bt != nil {
 		return bt, nil
 	}
@@ -90,6 +107,29 @@ func (m *Manager) CloseTab(envID string) {
 
 // CloseBrowser tears down all chromedp resources for envID.
 func (m *Manager) CloseBrowser(envID string) {
+	m.mu.Lock()
+	bt := m.browsers[envID]
+	if bt != nil {
+		if bt.tabCancel != nil {
+			bt.tabCancel()
+		}
+		if bt.allocCancel != nil {
+			bt.allocCancel()
+		}
+		delete(m.browsers, envID)
+	}
+	delete(m.debugPorts, envID)
+	m.mu.Unlock()
+
+	// Also close any pooled CDP WebSocket connection.
+	RemoveCDPConn(envID)
+}
+
+// ResetEnv tears down chromedp resources for envID when the browser is
+// being re-opened (e.g. browser_open after a prior close or crash).
+// Unlike CloseBrowser this does NOT close CDP conns — the new browser
+// will get a fresh WebSocket. It only tears down the allocator/tab.
+func (m *Manager) ResetEnv(envID string) {
 	m.mu.Lock()
 	bt := m.browsers[envID]
 	if bt != nil {

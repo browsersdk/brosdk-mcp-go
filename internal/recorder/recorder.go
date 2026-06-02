@@ -2,6 +2,7 @@
 package recorder
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -9,9 +10,10 @@ import (
 
 // Step is one captured tool call.
 type Step struct {
-	Index  int            `json:"index"`
-	Tool   string         `json:"tool"`
-	Params map[string]any `json:"params"`
+	Index       int                  `json:"index"`
+	Tool        string               `json:"tool"`
+	Params      map[string]any       `json:"params"`
+	Fingerprint *ElementFingerprint  `json:"fingerprint,omitempty"`
 }
 
 // Scene is a complete recorded sequence.
@@ -19,7 +21,6 @@ type Scene struct {
 	Version     int       `json:"version"`
 	Name        string    `json:"name"`
 	Description string    `json:"description,omitempty"`
-	EnvID       string    `json:"envId"`
 	CreatedAt   time.Time `json:"createdAt"`
 	Steps       []Step    `json:"steps"`
 }
@@ -29,19 +30,18 @@ const MaxSteps = 200
 
 // Status describes current recording state.
 type Status struct {
-	Recording bool   `json:"recording"`
-	EnvID     string `json:"envId,omitempty"`
-	StepCount int    `json:"stepCount"`
-	ElapsedMs int64  `json:"elapsedMs"`
+	Recording bool  `json:"recording"`
+	StepCount int   `json:"stepCount"`
+	ElapsedMs int64 `json:"elapsedMs"`
 }
 
 // Recorder is the global recording singleton.
 type Recorder struct {
-	mu        sync.Mutex
-	running   bool
-	envID     string
-	steps     []Step
-	startTime time.Time
+	mu           sync.Mutex
+	running      bool
+	steps        []Step
+	startTime    time.Time
+	lastSnapshot json.RawMessage
 }
 
 var globalRec *Recorder
@@ -54,15 +54,14 @@ func Get() *Recorder {
 	return globalRec
 }
 
-// Start begins recording for the given environment.
-func (r *Recorder) Start(envID string) error {
+// Start begins recording. Caller is responsible for staying on one env.
+func (r *Recorder) Start() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.running {
-		return fmt.Errorf("recording already active for env %s", r.envID)
+		return fmt.Errorf("recording already active")
 	}
 	r.running = true
-	r.envID = envID
 	r.steps = nil
 	r.startTime = time.Now()
 	return nil
@@ -78,7 +77,6 @@ func (r *Recorder) Stop() (*Scene, error) {
 	r.running = false
 	return &Scene{
 		Version:   1,
-		EnvID:     r.envID,
 		CreatedAt: r.startTime,
 		Steps:     r.steps,
 	}, nil
@@ -90,7 +88,6 @@ func (r *Recorder) Status() Status {
 	defer r.mu.Unlock()
 	st := Status{
 		Recording: r.running,
-		EnvID:     r.envID,
 		StepCount: len(r.steps),
 	}
 	if r.running {
@@ -106,7 +103,16 @@ func (r *Recorder) IsRecording() bool {
 	return r.running
 }
 
+// SetLastSnapshot caches the latest browser_snapshot result for _ref fingerprint extraction.
+func (r *Recorder) SetLastSnapshot(raw json.RawMessage) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.lastSnapshot = raw
+}
+
 // Capture records a tool call step. Silently drops when not recording.
+// For _ref tools, extracts a stable fingerprint from the cached snapshot
+// so the replay can resolve the ref in a new browser session.
 func (r *Recorder) Capture(tool string, params map[string]any) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -123,6 +129,17 @@ func (r *Recorder) Capture(tool string, params map[string]any) {
 		Tool:   tool,
 		Params: paramsCopy,
 	}
+
+	// For _ref tools, attach a fingerprint so replay can find the element.
+	if IsRefTool(tool) && len(r.lastSnapshot) > 0 {
+		if ref, ok := paramsCopy["ref"].(string); ok && ref != "" {
+			if node, err := FindNodeByRef(r.lastSnapshot, ref); err == nil {
+				fp := FingerprintFromNode(node)
+				step.Fingerprint = &fp
+			}
+		}
+	}
+
 	r.steps = append(r.steps, step)
 }
 

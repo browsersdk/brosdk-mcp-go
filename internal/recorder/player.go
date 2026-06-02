@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -74,8 +75,18 @@ func (p *Player) Replay(scene *Scene, opts ReplayOptions) *ReplayResult {
 	return result
 }
 
-func (p *Player) executeStep(step Step, opts ReplayOptions) StepResult {
+func (p *Player) executeStep(step Step, opts ReplayOptions) (sr StepResult) {
 	start := time.Now()
+	sr = StepResult{Index: step.Index, Tool: step.Tool}
+
+	// Recover from panics (e.g., chromedp allocator crash on stale connection).
+	defer func() {
+		if rec := recover(); rec != nil {
+			sr.Ok = false
+			sr.Error = fmt.Sprintf("panic: %v", rec)
+		}
+		sr.DurationMs = time.Since(start).Milliseconds()
+	}()
 
 	// Clone params and inject envId.
 	params := make(map[string]any, len(step.Params)+1)
@@ -87,15 +98,19 @@ func (p *Player) executeStep(step Step, opts ReplayOptions) StepResult {
 	// Variable substitution.
 	params = substituteVars(params, opts.Variables)
 
+	// Resolve _ref via fingerprint — take a fresh snapshot and match the element.
+	if step.Fingerprint != nil && IsRefTool(step.Tool) && p.mgr != nil {
+		raw, snapErr := p.mgr.Snapshot(opts.EnvID, "")
+		if snapErr == nil {
+			if node, findErr := FindNodeByFingerprint(raw, *step.Fingerprint); findErr == nil {
+				params["ref"] = strconv.Itoa(node.BackendDOMNodeID)
+			}
+		}
+		// On failure: keep the original ref (will likely fail, but StepResult.Error will report it).
+	}
+
 	// Dispatch through the same switch as normal tool calls.
 	resultText, err := p.dispatch(p.mgr, step.Tool, params)
-
-	duration := time.Since(start).Milliseconds()
-	sr := StepResult{
-		Index:      step.Index,
-		Tool:       step.Tool,
-		DurationMs: duration,
-	}
 
 	if err != nil {
 		sr.Ok = false

@@ -243,6 +243,16 @@ func (c *cdpConn) readLoop() {
 	}
 }
 
+// RemoveCDPConn closes and removes the pooled CDP connection for the given envID.
+func RemoveCDPConn(envID string) {
+	cdpMu.Lock()
+	defer cdpMu.Unlock()
+	if conn, ok := cdpConns[envID]; ok {
+		conn.ws.Close()
+		delete(cdpConns, envID)
+	}
+}
+
 // CloseCDP closes all pooled CDP connections.
 func CloseCDP() {
 	cdpMu.Lock()

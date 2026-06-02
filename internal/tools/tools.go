@@ -656,14 +656,8 @@ func All() []mcp.ToolDef {
 		// ── Record & Replay ─────────────────────────────────────────────────
 		{
 			Name:        "record_start",
-			Description: "Start recording browser actions. All subsequent tool calls (except recorder tools) will be captured as steps.",
-			InputSchema: schema(`{
-				"type":"object",
-				"required":["envId"],
-				"properties":{
-					"envId":{"type":"string","description":"ID of the browser environment to record against"}
-				}
-			}`),
+			Description: "Start recording browser actions. All subsequent tool calls (except recorder tools) will be captured as steps. Caller is responsible for staying on one browser environment.",
+			InputSchema: schema(`{"type":"object","properties":{}}`),
 		},
 		{
 			Name:        "record_stop",
@@ -784,6 +778,14 @@ func Handler(mgr *brosdk.Manager) mcp.Handler {
 
 		// 3. dispatch
 		result, err := Dispatch(mgr, name, p)
+
+		// 4. Cache browser_snapshot result for _ref fingerprint extraction.
+		if name == "browser_snapshot" && err == nil {
+			if rec := recorder.Get(); rec.IsRecording() {
+				rec.SetLastSnapshot([]byte(result))
+			}
+		}
+
 		if err != nil {
 			return err.Error(), true
 		}
@@ -870,6 +872,10 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		if envID == "" {
 			return "", fmt.Errorf("envId is required")
 		}
+		// Tear down chromedp + CDP resources immediately.
+		// The SDK close is async; stale allocators would otherwise
+		// cause panics if browser_open + scene_replay follow.
+		mgr.CloseBrowser(envID)
 		reqID, err := mgr.BrowserClose(envID)
 		if err != nil {
 			return "", err
@@ -1337,11 +1343,7 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 
 	// ── Record & Replay ──
 	case "record_start":
-		envID := str(p, "envId")
-		if envID == "" {
-			return "", fmt.Errorf("envId is required")
-		}
-		if err := recorder.Get().Start(envID); err != nil {
+		if err := recorder.Get().Start(); err != nil {
 			return "", err
 		}
 		return `{"recording":true}`, nil

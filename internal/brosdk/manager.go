@@ -229,6 +229,17 @@ func (m *Manager) emit(evt Event) {
 			payload.Data.EnvID != "" &&
 			payload.Data.RemoteDebuggingPort > 0 {
 			m.mu.Lock()
+			// Clean up any stale browserTab from a prior run for this envID
+			// (defense-in-depth: covers browser_open without explicit close).
+			if bt := m.browsers[payload.Data.EnvID]; bt != nil {
+				if bt.tabCancel != nil {
+					bt.tabCancel()
+				}
+				if bt.allocCancel != nil {
+					bt.allocCancel()
+				}
+				delete(m.browsers, payload.Data.EnvID)
+			}
 			m.debugPorts[payload.Data.EnvID] = payload.Data.RemoteDebuggingPort
 			m.mu.Unlock()
 		}
