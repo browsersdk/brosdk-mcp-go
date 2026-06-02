@@ -116,13 +116,14 @@ func All() []mcp.ToolDef {
 		},
 		{
 			Name:        "browser_snapshot",
-			Description: "Capture the accessibility tree of the current page. Returns the full AX tree with backendNodeId refs usable by browser_click_ref / browser_type_ref.",
+			Description: "Capture the accessibility tree of the current page. Set interactiveOnly=true to return only interactive elements (buttons, inputs, links, etc.) — much smaller response for LLM agents.",
 			InputSchema: schema(`{
 				"type":"object",
 				"required":["envId"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
-					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
+					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"},
+					"interactiveOnly":{"type":"boolean","description":"Only return interactive elements (button/input/link/select etc). Reduces output 10-50x."}
 				}
 			}`),
 		},
@@ -593,6 +594,90 @@ func All() []mcp.ToolDef {
 				}
 			}`),
 		},
+
+		// ── Agent-Friendly Tools (Tier 1 & 2) ─────────────────────────────────
+		{
+			Name:        "browser_find_ref",
+			Description: "Search the accessibility tree for elements matching role/name/value and return their refs. Much cheaper than parsing the full browser_snapshot output. All filter fields are optional — omit to match all, provide multiple to narrow results.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["envId"],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"},
+					"role":{"type":"string","description":"ARIA role to match, e.g. 'button', 'textbox', 'link' (optional)"},
+					"name":{"type":"string","description":"Accessible name to match (optional)"},
+					"value":{"type":"string","description":"Current value to match, e.g. input field content (optional)"},
+					"limit":{"type":"integer","description":"Max results to return (default 10)"}
+				}
+			}`),
+		},
+		{
+			Name:        "browser_wait",
+			Description: "Wait for an element to appear on the page. Polls the accessibility tree at 200ms intervals until the element is found or timeout is reached. Provide at least one of: text (substring match on name/value), role+name (exact match), or selector (CSS).",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["envId"],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"},
+					"text":{"type":"string","description":"Text substring to wait for (case-insensitive, matched against name and value)"},
+					"role":{"type":"string","description":"ARIA role (paired with name)"},
+					"name":{"type":"string","description":"Accessible name (paired with role)"},
+					"selector":{"type":"string","description":"CSS selector to wait for"},
+					"timeout":{"type":"integer","description":"Timeout in ms (default 5000)"}
+				}
+			}`),
+		},
+		{
+			Name:        "browser_page_state",
+			Description: "Quick page check: returns {title, url, readyState}. Use instead of browser_evaluate for common page metadata queries.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["envId"],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"}
+				}
+			}`),
+		},
+		{
+			Name:        "browser_exists",
+			Description: "Quick boolean check whether an element (by role and name) exists on the current page. Returns {exists: true/false}. Faster and cheaper than parsing the full snapshot.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["envId","role","name"],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"},
+					"role":{"type":"string","description":"ARIA role, e.g. 'button', 'dialog'"},
+					"name":{"type":"string","description":"Accessible name, e.g. 'Submit', 'Close'"},
+					"value":{"type":"string","description":"Optional additional value to match"}
+				}
+			}`),
+		},
+		{
+			Name:        "browser_dialog",
+			Description: "Handle a JavaScript dialog (alert/confirm/prompt). Use 'accept' to dismiss with OK, 'dismiss' to cancel.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["envId","action"],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"},
+					"action":{"type":"string","description":"'accept' (click OK) or 'dismiss' (click Cancel)"}
+				}
+			}`),
+		},
+		{
+			Name:        "browser_fill_form",
+			Description: "Fill multiple form fields at once. Accepts a map of CSS selectors to values. If submitSelector is provided, clicks it after filling all fields. Much more efficient than calling browser_fill/browser_type multiple times.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["envId","fields"],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"},
+					"fields":{"type":"object","description":"Map of CSS selectors to values, e.g. {\"#name\": \"John\", \"#email\": \"john@test.com\"}"},
+					"submitSelector":{"type":"string","description":"CSS selector for submit button to click after filling (optional)"}
+				}
+			}`),
+		},
+
 		// ── Environment management ─────────────────────────────────────────────
 		{
 			Name:        "env_create",
@@ -928,6 +1013,14 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 			return "", fmt.Errorf("envId is required")
 		}
 		sid := str(p, "sessionId")
+		interactiveOnly := boolVal(p, "interactiveOnly")
+		if interactiveOnly {
+			raw, err := mgr.SnapshotInteractive(envID)
+			if err != nil {
+				return "", err
+			}
+			return string(raw), nil
+		}
 		raw, err := mgr.Snapshot(envID, sid)
 		if err != nil {
 			return "", err
@@ -1304,6 +1397,109 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 			return "", err
 		}
 		return `{"ok":true}`, nil
+
+	// ── Agent-Friendly Tools (Tier 1 & 2) ──
+	case "browser_find_ref":
+		envID := str(p, "envId")
+		if envID == "" {
+			return "", fmt.Errorf("envId is required")
+		}
+		role := str(p, "role")
+		name := str(p, "name")
+		value := str(p, "value")
+		limit := 10
+		if v, ok := p["limit"].(float64); ok && v > 0 {
+			limit = int(v)
+		}
+		refs, err := mgr.FindRefs(envID, role, name, value, limit)
+		if err != nil {
+			return "", err
+		}
+		b, _ := json.Marshal(map[string]any{"refs": refs, "count": len(refs)})
+		return string(b), nil
+
+	case "browser_wait":
+		envID := str(p, "envId")
+		if envID == "" {
+			return "", fmt.Errorf("envId is required")
+		}
+		text := str(p, "text")
+		role := str(p, "role")
+		name := str(p, "name")
+		selector := str(p, "selector")
+		timeout := 5000
+		if v, ok := p["timeout"].(float64); ok && v > 0 {
+			timeout = int(v)
+		}
+		if err := mgr.Wait(envID, text, role, name, selector, timeout); err != nil {
+			return "", err
+		}
+		return `{"waited":true}`, nil
+
+	case "browser_page_state":
+		envID := str(p, "envId")
+		if envID == "" {
+			return "", fmt.Errorf("envId is required")
+		}
+		ps, err := mgr.PageState(envID)
+		if err != nil {
+			return "", err
+		}
+		b, _ := json.Marshal(ps)
+		return string(b), nil
+
+	case "browser_exists":
+		envID, role, name := str(p, "envId"), str(p, "role"), str(p, "name")
+		if envID == "" || role == "" || name == "" {
+			return "", fmt.Errorf("envId, role and name are required")
+		}
+		value := str(p, "value")
+		exists, err := mgr.Exists(envID, role, name, value)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf(`{"exists":%v}`, exists), nil
+
+	case "browser_dialog":
+		envID, action := str(p, "envId"), str(p, "action")
+		if envID == "" || action == "" {
+			return "", fmt.Errorf("envId and action are required")
+		}
+		if action != "accept" && action != "dismiss" {
+			return "", fmt.Errorf("action must be 'accept' or 'dismiss'")
+		}
+		result, err := mgr.Dialog(envID, action)
+		if err != nil {
+			return "", err
+		}
+		b, _ := json.Marshal(result)
+		return string(b), nil
+
+	case "browser_fill_form":
+		envID := str(p, "envId")
+		if envID == "" {
+			return "", fmt.Errorf("envId is required")
+		}
+		fieldsRaw, ok := p["fields"].(map[string]any)
+		if !ok || len(fieldsRaw) == 0 {
+			return "", fmt.Errorf("fields must be a non-empty object")
+		}
+		fields := make(map[string]string, len(fieldsRaw))
+		for k, v := range fieldsRaw {
+			if s, ok := v.(string); ok {
+				fields[k] = s
+			}
+		}
+		if len(fields) == 0 {
+			return "", fmt.Errorf("fields object has no string values")
+		}
+		submitSel := str(p, "submitSelector")
+		result, err := mgr.FillForm(envID, fields, submitSel)
+		if err != nil {
+			return "", err
+		}
+		b, _ := json.Marshal(result)
+		return string(b), nil
 
 	// ── Environment CRUD ──
 	case "env_create":

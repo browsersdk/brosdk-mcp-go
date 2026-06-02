@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/chromedp/cdproto/accessibility"
 	"github.com/chromedp/cdproto/cdp"
@@ -1080,6 +1081,311 @@ func (m *Manager) UncheckRef(envID, sessionID, ref string) error {
 			return chromedp.Click([]cdp.NodeID{nid}, chromedp.ByNodeID).Do(ctx)
 		}),
 	)
+}
+
+// ---------- agent-friendly tools (Tier 1 & 2) ----------
+
+// RefResult is a matched element from a snapshot-based search.
+type RefResult struct {
+	Ref   int    `json:"ref"`
+	Role  string `json:"role"`
+	Name  string `json:"name"`
+	Value string `json:"value,omitempty"`
+}
+
+// FindRefs takes a snapshot, searches by role/name/value, and returns matching refs.
+func (m *Manager) FindRefs(envID, role, name, value string, limit int) ([]RefResult, error) {
+	raw, err := m.Snapshot(envID, "")
+	if err != nil {
+		return nil, err
+	}
+	return filterRefs(raw, role, name, value, limit)
+}
+
+// SnapshotInteractive returns only interactive elements from the AX tree.
+func (m *Manager) SnapshotInteractive(envID string) (json.RawMessage, error) {
+	raw, err := m.Snapshot(envID, "")
+	if err != nil {
+		return nil, err
+	}
+	return filterInteractiveNodes(raw)
+}
+
+// PageState holds quick page metadata.
+type PageState struct {
+	Title      string `json:"title"`
+	URL        string `json:"url"`
+	ReadyState string `json:"readyState"`
+}
+
+// PageState returns the current page title, URL, and readyState.
+func (m *Manager) PageState(envID string) (*PageState, error) {
+	tabCtx, err := m.ensureTab(envID)
+	if err != nil {
+		return nil, err
+	}
+	var ps PageState
+	err = chromedp.Run(tabCtx,
+		chromedp.Evaluate(`document.title`, &ps.Title),
+		chromedp.Evaluate(`location.href`, &ps.URL),
+		chromedp.Evaluate(`document.readyState`, &ps.ReadyState),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("page state: %w", err)
+	}
+	return &ps, nil
+}
+
+// Exists checks whether an element matching the given role/name/value exists on the page.
+func (m *Manager) Exists(envID, role, name, value string) (bool, error) {
+	raw, err := m.Snapshot(envID, "")
+	if err != nil {
+		return false, err
+	}
+	_, err = findNodeByFingerprintJSON(raw, role, name, value)
+	if err != nil {
+		return false, nil // not found → exists=false (no error)
+	}
+	return true, nil
+}
+
+// Wait polls until an element (by text, role+name, or selector) appears.
+// Returns error if timeout is exceeded.
+func (m *Manager) Wait(envID, text, role, name, selector string, timeoutMs int) error {
+	if timeoutMs <= 0 {
+		timeoutMs = 5000
+	}
+	if text == "" && (role == "" || name == "") && selector == "" {
+		return fmt.Errorf("at least one of text, role+name, or selector is required")
+	}
+
+	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
+
+	for time.Now().Before(deadline) {
+		// Try snapshot-based matching for text or role+name
+		if text != "" || (role != "" && name != "") {
+			raw, err := m.Snapshot(envID, "")
+			if err == nil {
+				// Text search
+				if text != "" {
+					if refs, _ := filterRefs(raw, "", "", "", 0); len(refs) > 0 {
+						for _, r := range refs {
+							if strings.Contains(strings.ToLower(r.Name), strings.ToLower(text)) ||
+								strings.Contains(strings.ToLower(r.Value), strings.ToLower(text)) {
+								return nil
+							}
+						}
+					}
+				}
+				// Role+name search
+				if role != "" && name != "" {
+					if _, err := findNodeByFingerprintJSON(raw, role, name, ""); err == nil {
+						return nil
+					}
+				}
+			}
+		}
+
+		// Try selector-based matching
+		if selector != "" {
+			tabCtx, err := m.ensureTab(envID)
+			if err == nil {
+				var nodeIDs []cdp.NodeID
+				err := chromedp.Run(tabCtx,
+					chromedp.ActionFunc(func(ctx context.Context) error {
+						return chromedp.NodeIDs(selector, &nodeIDs, chromedp.ByQuery).Do(ctx)
+					}),
+				)
+				if err == nil && len(nodeIDs) > 0 {
+					return nil
+				}
+			}
+		}
+
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	return fmt.Errorf("wait timed out after %dms", timeoutMs)
+}
+
+// DialogResult holds the result of a dialog interaction.
+type DialogResult struct {
+	Action  string `json:"action"`
+	Message string `json:"message,omitempty"`
+}
+
+// Dialog handles a JavaScript dialog (alert/confirm/prompt).
+// action: "accept" or "dismiss".
+func (m *Manager) Dialog(envID, action string) (*DialogResult, error) {
+	tabCtx, err := m.ensureTab(envID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &DialogResult{Action: action}
+	accept := action == "accept"
+
+	err = chromedp.Run(tabCtx,
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			return page.HandleJavaScriptDialog(accept).Do(ctx)
+		}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("dialog handle: %w", err)
+	}
+	return result, nil
+}
+
+// FillFormResult holds per-field results.
+type FillFormResult struct {
+	Filled map[string]bool `json:"filled"`
+	Errors []string        `json:"errors,omitempty"`
+}
+
+// FillForm fills multiple form fields at once using CSS selectors.
+// If submitSelector is non-empty, clicks it after filling.
+func (m *Manager) FillForm(envID string, fields map[string]string, submitSelector string) (*FillFormResult, error) {
+	result := &FillFormResult{Filled: make(map[string]bool)}
+
+	for sel, text := range fields {
+		if err := m.Fill(envID, "", sel, text); err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", sel, err))
+			continue
+		}
+		result.Filled[sel] = true
+	}
+
+	if submitSelector != "" {
+		if err := m.Click(envID, "", submitSelector); err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("submit: %v", err))
+		}
+	}
+
+	return result, nil
+}
+
+// ---------- AX tree helpers (used by FindRefs, Exists, Wait) ----------
+
+// axNode mirrors a single node in the CDP Accessibility.getFullAXTree response.
+type axNode struct {
+	NodeID           string   `json:"nodeId"`
+	BackendDOMNodeID int      `json:"backendDOMNodeId"`
+	Ignored          bool     `json:"ignored"`
+	Role             axValue  `json:"role"`
+	Name             axValue  `json:"name"`
+	Value            axValue  `json:"value"`
+	ChildIDs         []string `json:"childIds"`
+}
+
+type axValue struct {
+	Value any    `json:"value"`
+	Type  string `json:"type"`
+}
+
+type axTree struct {
+	Nodes []axNode `json:"nodes"`
+}
+
+func axStr(v axValue) string {
+	if s, ok := v.Value.(string); ok {
+		return s
+	}
+	return ""
+}
+
+// filterRefs parses a snapshot JSON and returns matching refs by role/name/value.
+func filterRefs(snapshot json.RawMessage, role, name, value string, limit int) ([]RefResult, error) {
+	var tree axTree
+	if err := json.Unmarshal(snapshot, &tree); err != nil {
+		return nil, fmt.Errorf("snapshot parse: %w", err)
+	}
+
+	var out []RefResult
+	for i := range tree.Nodes {
+		n := &tree.Nodes[i]
+		if n.Ignored {
+			continue
+		}
+		r := axStr(n.Role)
+		nm := axStr(n.Name)
+		v := axStr(n.Value)
+
+		if role != "" && r != role {
+			continue
+		}
+		if name != "" && nm != name {
+			continue
+		}
+		if value != "" && v != value {
+			continue
+		}
+
+		out = append(out, RefResult{
+			Ref:   n.BackendDOMNodeID,
+			Role:  r,
+			Name:  nm,
+			Value: v,
+		})
+
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+// findNodeByFingerprintJSON searches a snapshot JSON for a node matching role+name+value.
+func findNodeByFingerprintJSON(snapshot json.RawMessage, role, name, value string) (*axNode, error) {
+	var tree axTree
+	if err := json.Unmarshal(snapshot, &tree); err != nil {
+		return nil, err
+	}
+	for i := range tree.Nodes {
+		n := &tree.Nodes[i]
+		if n.Ignored {
+			continue
+		}
+		if axStr(n.Role) != role || axStr(n.Name) != name {
+			continue
+		}
+		if value != "" && axStr(n.Value) != value {
+			continue
+		}
+		return n, nil
+	}
+	return nil, fmt.Errorf("not found: role=%q name=%q", role, name)
+}
+
+// filterInteractiveNodes returns only interactive nodes from the AX tree.
+func filterInteractiveNodes(snapshot json.RawMessage) (json.RawMessage, error) {
+	var tree axTree
+	if err := json.Unmarshal(snapshot, &tree); err != nil {
+		return nil, fmt.Errorf("snapshot parse: %w", err)
+	}
+
+	interactiveRoles := map[string]bool{
+		"button": true, "link": true, "textbox": true, "searchbox": true,
+		"combobox": true, "listbox": true, "checkbox": true, "radio": true,
+		"menuitem": true, "tab": true, "switch": true, "slider": true,
+		"spinbutton": true, "heading": true, "image": true,
+	}
+
+	filtered := make([]axNode, 0, len(tree.Nodes)/3)
+	for i := range tree.Nodes {
+		n := &tree.Nodes[i]
+		if n.Ignored {
+			continue
+		}
+		if interactiveRoles[axStr(n.Role)] {
+			filtered = append(filtered, *n)
+		}
+	}
+
+	out, err := json.Marshal(axTree{Nodes: filtered})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // ---------- helpers ----------
