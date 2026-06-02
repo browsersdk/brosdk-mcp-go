@@ -13,15 +13,16 @@
 |------|------|--------|
 | **README.md**（本文件） | 项目总览、API 速查、配置、运行 | 首次了解项目 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计、技术栈、设计决策 | 理解实现原理 / 贡献代码 |
-| [docs/tools-reference.md](docs/tools-reference.md) | 50 个 MCP Tool 完整 API 参考 | 查找特定 tool 的参数/返回值 |
+| [docs/tools-reference.md](docs/tools-reference.md) | 59 个 MCP Tool 完整 API 参考 | 查找特定 tool 的参数/返回值 |
 
 ## 功能概览
 
-- 通过 50 个 MCP Tool 暴露 BroSDK 全部能力：SDK 生命周期、浏览器控制、浏览器高级操作、环境 CRUD
+- 通过 59 个 MCP Tool 暴露 BroSDK 全部能力：SDK 生命周期、浏览器控制、浏览器高级操作、环境 CRUD、**浏览器录制回放**
 - 基于 [chromedp](https://github.com/chromedp/chromedp) 的高层浏览器操作——点击、输入、截图、PDF 等，无需手写 CDP 命令
 - 保留 `browser_command` 透明 CDP 代理，支持所有 DevTools 命令的高级/自定义场景
+- **录制回放**：`record_start` → 操作（自动捕获）→ `record_stop` 自动保存场景，`scene_replay` 一键回放，支持 `{{变量}}` 替换
 - 异步工具通过 SSE 事件回传结果，支持长时间等待
-- 双配置文件（`config.json` / `config.local.json`），启动时自动初始化 SDK
+- 双配置文件（`config.json` / `config.local.json`），启动时**必须提供 apiKey**
 - 跨平台：Windows / macOS 原生支持，首次运行自动下载对应动态库
 
 ## 架构
@@ -80,7 +81,7 @@ build constraint：`//go:build windows` / `//go:build darwin` / `//go:build !win
 ## 配置
 
 启动时服务器依次读取 `config.local.json` → `config.json`（前者优先级更高）。
-找到配置文件后自动调用 `sdk_init`。
+**必须提供有效的 `apiKey`**，缺失则启动失败。
 
 ### 配置文件格式
 
@@ -97,7 +98,7 @@ build constraint：`//go:build windows` / `//go:build darwin` / `//go:build !win
 
 | 字段       | 必填   | 默认值         | 说明                                        |
 |-----------|--------|----------------|---------------------------------------------|
-| `apiKey`  | 是\*  | —              | 客户 ID；未提供 `userSig` 时自动通过 API 获取 |
+| `apiKey`  | **是**  | —              | 客户 ID（**必须提供**）；未提供 `userSig` 时自动通过 API 获取 |
 | `userSig` | 否     | —              | 预计算的签名（优先级高于 apiKey）             |
 | `workDir` | 否     | `./brosdk`     | SDK 工作目录（自动创建）                      |
 | `port`    | 否     | `5811`         | SDK 浏览器控制端口                            |
@@ -145,7 +146,7 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | `/message` | POST | JSON-RPC 2.0 请求端点         |
 | `/health`  | GET  | 健康检查（返回 `200 OK`）      |
 
-## MCP Tools（50 个）
+## MCP Tools（59 个）
 
 ### SDK 信息（3 个）
 
@@ -248,6 +249,34 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | `env_update`  | Sync     | `envId` (必填), `body`                     | 更新环境配置                    |
 | `env_destroy` | Sync     | `envId` (必填)                             | 永久删除环境及所有数据          |
 | `env_getinfo` | Sync     | `envId` (必填)                             | 获取单个环境详情                 |
+
+### 录制回放（8 个）
+
+| Tool           | 同步/异步 | 参数                                       | 说明                            |
+|----------------|----------|--------------------------------------------|---------------------------------|
+| `record_start` | Sync     | `envId` (必填)                             | 开始录制，后续操作自动捕获       |
+| `record_stop`  | Sync     | `name` (必填), `description`               | 停止录制并自动保存为 `scenes/{name}.json` |
+| `record_status`| Sync     | —                                          | 查看当前录制状态                 |
+| `scene_list`   | Sync     | —                                          | 列出所有已保存场景               |
+| `scene_get`    | Sync     | `name` (必填)                              | 查看场景详情（步骤 JSON）        |
+| `scene_update` | Sync     | `name` (必填), `scene` (必填)              | 编辑已保存场景的步骤和元数据     |
+| `scene_delete` | Sync     | `name` (必填)                              | 删除场景文件                     |
+| `scene_replay` | Sync     | `name` (必填), `envId` (必填), `variables`, `stopOnError`, `stepDelay` | 加载场景并逐步回放，支持 `{{变量}}` 替换 |
+
+#### 录制回放工作流
+
+```
+1. record_start({envId:"env-1"})                    → 开始录制
+2. browser_navigate/browser_click/browser_fill...    → 操作自动捕获
+3. record_stop({name:"login_flow"})                  → 自动保存到 workDir/scenes/login_flow.json
+4. scene_replay({name:"login_flow", envId:"env-2",   → 用变量在新环境中回放
+     variables:{"username":"alice","password":"s3cret"}})
+```
+
+- 录制时自动去除 `envId`/`sessionId`，回放时由调用方注入
+- 步骤中可使用 `{{变量名}}` 占位符，回放时替换为实际值
+- 最大 200 步，步骤间默认 500ms 延迟
+- 场景文件为 JSON 格式，可读可 git 管理
 
 ## Ref 定位机制
 
@@ -366,7 +395,7 @@ SSE 连接每 15 秒发送 `: ping` 心跳保持连接。
 
 ## E2E 测试
 
-测试文件按功能拆分为 8 个文件，方便单独运行：
+测试文件按功能拆分为 9 个文件，方便单独运行：
 
 | 文件 | 测试函数 | 覆盖内容 |
 |------|---------|---------|
@@ -379,6 +408,9 @@ SSE 连接每 15 秒发送 `: ping` 心跳保持连接。
 | `e2e_mouse_test.go` | `TestE2E_MouseInteraction` | dblclick/hover/hover_ref/find_click_text |
 | `e2e_scroll_test.go` | `TestE2E_ScrollAndScreenshot` | scroll/scroll_into_view/screenshot/PDF |
 | `e2e_drag_test.go` | `TestE2E_DragAndUpload` | drag/upload_file |
+| `e2e_record_test.go` | `TestE2E_RecordReplay_FullFlow` | record_start → 操作 → record_stop → scene_replay |
+| | `TestE2E_RecordReplay_VariableSubstitution` | 变量替换：`{{username}}`/`{{password}}` |
+| | `TestE2E_RecordReplay_StopOnError` | stopOnError 行为 |
 
 ```bash
 # 运行全部 e2e 测试（需 Windows + DLL + 有效 apiKey）
@@ -390,7 +422,7 @@ go test -v -run TestE2E_KeyboardInteraction -timeout 300s .
 go test -v -run TestE2E_SnapshotClickRef -timeout 300s .
 ```
 
-测试覆盖 50 个 MCP tools 中的 49 个（98%），仅 `browser_install`（纯异步、耗时过长）未覆盖。
+测试覆盖 59 个 MCP tools。仅 `browser_install`（纯异步、耗时过长）未纳入 E2E。
 
 ## 目录结构
 
@@ -402,15 +434,9 @@ brosdk-mcp-go/
 ├── README_EN.md
 ├── docs/
 │   ├── ARCHITECTURE.md             # 架构设计 + 技术决策
-│   └── tools-reference.md          # 50 个 MCP Tool API 参考
+│   └── tools-reference.md          # 59 个 MCP Tool API 参考
 ├── e2e_test.go                    # E2E 共享基础设施（类型、fixture、helper）
-├── e2e_basic_test.go              # E2E: SDK 基础 + CDP 表单测试
-├── e2e_snapshot_test.go           # E2E: snapshot + click_ref 工作流
-├── e2e_form_test.go               # E2E: 表单元素交互
-├── e2e_keyboard_test.go           # E2E: 键盘交互
-├── e2e_mouse_test.go              # E2E: 鼠标交互
-├── e2e_scroll_test.go             # E2E: 滚动 + 截图 + PDF
-├── e2e_drag_test.go               # E2E: 拖拽 + 文件上传
+├── e2e_record_test.go            # E2E: 录制回放完整流程
 ├── libs/
 │   ├── brosdk.h                    # C 头文件（参考）
 │   ├── windows-x64/
@@ -438,7 +464,10 @@ brosdk-mcp-go/
     │   ├── server.go              # MCP SSE 服务器（JSON-RPC 2.0 + 广播）
     │   └── inspector.go           # 内嵌 MCP Inspector Web UI
     └── tools/
-        └── tools.go               # 50 个 Tool 定义 + handler dispatch
+        └── tools.go               # 59 个 Tool 定义 + handler dispatch + Recorder hook
+    └── recorder/
+        ├── recorder.go            # 录制单例（start/stop/capture/sanitize）
+        └── player.go              # 回放引擎（步骤执行 + 变量替换）
 ```
 
 ## 关键设计
@@ -453,6 +482,7 @@ brosdk-mcp-go/
 | **AX Tree ref 定位**| `browser_snapshot` → `backendDOMNodeId` → `browser_*_ref` 精准定位 |
 | **CDP 连接池**      | 按 `envId` 缓存 WebSocket 连接，断线自动重连（最多一次）          |
 | **自动 userSig**    | `apiKey` 传入时，`Init()` 自动调用 BroSDK HTTP API 获取 userSig   |
+| **录制回放 Hook 模式**| Handler 层自动捕获所有 browser action，Dispatch 与 Player 共享同一 switch |
 | **自动调试端口**    | `browser_open` 始终注入 `--remote-debugging-port=0`              |
 
 ## 依赖

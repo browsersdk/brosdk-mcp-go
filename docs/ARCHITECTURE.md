@@ -26,7 +26,7 @@ brosdk-mcp-go/
 │   ├── tools-reference.md      # 50 MCP Tool API 参考
 │   └── ARCHITECTURE.md         # 本文档
 ├── e2e_test.go                 # E2E 共享基础设施
-├── e2e_*_test.go               # 7 个按功能拆分的 E2E 测试文件
+├── e2e_*_test.go               # 8 个按功能拆分的 E2E 测试文件
 ├── libs/
 │   ├── brosdk.h                       # C 头文件（参考）
 │   ├── windows-x64/brosdk.dll         # Windows x64 原生库
@@ -52,7 +52,10 @@ brosdk-mcp-go/
 │   │   ├── server.go           # SSE server + session 管理 + JSON-RPC dispatch
 │   │   └── inspector.go        # 内嵌 MCP Inspector Web UI（自包含 HTML）
 │   └── tools/
-│       └── tools.go            # 50 Tool 定义 + handler dispatch
+│       └── tools.go            # 59 Tool 定义 + handler dispatch + Recorder hook
+│   └── recorder/
+│       ├── recorder.go         # 录制单例：start/stop/capture/sanitize
+│       └── player.go           # 回放引擎：步骤执行 + 变量替换
 ```
 
 ## MCP Transport：仅 SSE
@@ -128,6 +131,41 @@ Native result_callback (C)
 - **debug port 来源**：`Manager.emit()` 解析 `browser-open-success` 事件，提取 `remoteDebuggingPort`
 - 当 chromedp 有活跃 tab 时，优先通过 chromedp 路由 CDP 命令（待实现）
 
+## 浏览器录制回放
+
+### 架构
+
+```
+Agent calls record_start
+        ↓
+Handler() → Recorder hook (capture every browser action)
+        ↓                      ↓
+  Dispatch(mgr, name, params)  Recorder.Capture(name, sanitized)
+        ↓
+Agent calls record_stop → auto-save to scenes/{name}.json
+        ↓
+Agent calls scene_replay → Player.LoadScene → Player.Replay
+        ↓
+  For each step: inject envId → substitute vars → Dispatch(mgr, name, params)
+```
+
+### 关键设计
+
+- **Hook 模式**：Handler 在 Dispatch 之前自动捕获所有非录制类 tool call，零侵入
+- **共享 Dispatch**：Player 直接调用 `tools.Dispatch()`，重用相同的 switch 分支，零代码重复
+- **`record_stop` 自动保存**：停止录制时直接写入 `workDir/scenes/{name}.json`，不需要 Agent 手动调 `scene_save`
+- **变量替换**：步骤中的 `{{variable}}` 占位符在回放时被 `scene_replay({variables:{...}})` 替换
+- **envId 注入**：录制时自动去除 `envId`，回放时由调用方注入
+- **场景文件**：JSON 格式，可读、可 git 管理、可手写编辑
+
+### 工具分类（9 个）
+
+| 类别 | 工具 | 说明 |
+|------|------|------|
+| 录制控制 | `record_start`, `record_stop`, `record_status` | 开始/停止/查看录制 |
+| 场景管理 | `scene_list`, `scene_get`, `scene_update`, `scene_delete` | 列出/查看/编辑/删除场景 |
+| 回放 | `scene_replay` | 加载场景并逐步回放 |
+
 ## 关键设计决策
 
 | 决策 | 理由 |
@@ -141,3 +179,5 @@ Native result_callback (C)
 | **chromedp 高层 API** | 减少 LLM 手写 CDP 命令，覆盖率 97.7% 的 E2E 测试 |
 | **selector + ref 双定位** | 分离工具而非合并参数，工作流清晰，无破坏性 |
 | **仅 SSE transport** | 不需要 stdio，AI Agent 通过 HTTP 连接更灵活 |
+| **录制回放 Hook 模式** | Handler 层自动捕获，Dispatch 与 Player 共享同一 switch，零代码重复 |
+| **record_stop 自动保存** | 简化 Agent 工作流，减少 tool call 次数，避免步骤数组在网络间传输 |

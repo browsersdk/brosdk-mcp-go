@@ -60,8 +60,15 @@ main{flex:1;display:grid;grid-template-columns:280px 1fr;grid-template-rows:1fr 
 .tool-item .name{font-family:var(--mono);font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tool-item .desc{color:var(--text2);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
 .tool-item .badge{font-size:9px;padding:1px 5px;border-radius:3px;background:var(--bg3);color:var(--text2);flex-shrink:0}
+/* ── Tabs ── */
+.tab-bar{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
+.tab-bar .tab{padding:6px 14px;font-size:11px;font-weight:500;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s}
+.tab-bar .tab:hover{color:var(--text)}
+.tab-bar .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-panel{display:none;flex:1;overflow:auto}
+.tab-panel.active{display:flex;flex-direction:column}
 /* ── Call panel (top-right) ── */
-#call-panel .panel-body{padding:12px;display:flex;flex-direction:column;gap:10px}
+#call-panel .panel-body{padding:12px;display:flex;flex-direction:column;gap:10px;overflow:auto}
 #call-panel label{font-size:11px;color:var(--text2);font-weight:500}
 #call-tool-name{font-family:var(--mono);font-size:13px;color:var(--accent)}
 #call-tool-desc{font-size:12px;color:var(--text2)}
@@ -74,7 +81,27 @@ main{flex:1;display:grid;grid-template-columns:280px 1fr;grid-template-rows:1fr 
 .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
 .btn.primary:hover{opacity:.9}
 .btn.danger{color:var(--red)}
+.btn.small{padding:3px 8px;font-size:10px}
 #call-result{flex:1;overflow:auto}
+/* ── Scenes panel ── */
+#scenes-panel .scene-actions{padding:8px 12px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-shrink:0}
+#scenes-panel #scene-list{flex:1;overflow:auto}
+.scene-item{padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s}
+.scene-item:hover{background:var(--bg3)}
+.scene-item .scene-name{font-family:var(--mono);font-size:12px;color:var(--accent)}
+.scene-item .scene-meta{font-size:10px;color:var(--text2);margin-top:2px}
+.scene-item .scene-actions{display:none;margin-top:4px;gap:6px}
+.scene-item.open .scene-actions{display:flex}
+.scene-item .scene-detail{display:none;margin-top:6px}
+.scene-item.open .scene-detail{display:block}
+.scene-item .scene-detail pre{font-family:var(--mono);font-size:10px;background:var(--bg);padding:8px;border-radius:4px;overflow:auto;max-height:200px;white-space:pre-wrap;word-break:break-all}
+.scene-replay-dialog{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:100}
+.scene-replay-dialog.open{display:flex}
+.scene-replay-dialog .dialog-box{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px;min-width:300px}
+.scene-replay-dialog .dialog-box h3{font-size:13px;margin-bottom:10px}
+.scene-replay-dialog .dialog-box input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:12px;padding:6px 8px;margin-bottom:8px;outline:none}
+.scene-replay-dialog .dialog-box input:focus{border-color:var(--accent)}
+.scene-replay-dialog .dialog-box .btn-row{justify-content:flex-end}
 .result-item{margin-bottom:8px;border:1px solid var(--border);border-radius:6px;overflow:hidden}
 .result-item .meta{padding:5px 10px;background:var(--bg3);font-size:11px;color:var(--text2);display:flex;justify-content:space-between}
 .result-item .meta .ts{font-family:var(--mono)}
@@ -134,7 +161,11 @@ main{flex:1;display:grid;grid-template-columns:280px 1fr;grid-template-rows:1fr 
   </div>
   <!-- Call Panel -->
   <div class="panel" id="call-panel">
-    <div class="panel-header">&#x26A1; Tool Call</div>
+    <div class="tab-bar">
+      <div class="tab active" data-tab="call" onclick="switchTab('call')">&#x26A1; Tool Call</div>
+      <div class="tab" data-tab="scenes" onclick="switchTab('scenes')">&#x1F3AC; Scenes</div>
+    </div>
+    <div class="tab-panel active" id="tab-call">
     <div class="panel-body">
       <div>
         <div id="call-tool-name" style="margin-bottom:2px">Select a tool</div>
@@ -154,6 +185,26 @@ main{flex:1;display:grid;grid-template-columns:280px 1fr;grid-template-rows:1fr 
         <button class="btn" id="btn-clear-history" style="font-size:10px;padding:2px 8px">Clear</button>
       </div>
       <div id="call-result"><div style="color:var(--text2);font-size:12px;padding:8px 0">No calls yet. Select a tool and click "Call Tool".</div></div>
+    </div>
+    </div>
+    <div class="tab-panel" id="tab-scenes" style="flex-direction:column">
+      <div class="scene-actions">
+        <button class="btn small" id="btn-refresh-scenes">&#x21BB; Refresh</button>
+        <span style="font-size:10px;color:var(--text2);margin-left:auto" id="scene-count">—</span>
+      </div>
+      <div id="scene-list"><div style="color:var(--text2);font-size:12px;padding:12px">Loading scenes...</div></div>
+    </div>
+  </div>
+  <!-- Replay Dialog -->
+  <div class="scene-replay-dialog" id="replay-dialog">
+    <div class="dialog-box">
+      <h3>&#x25B6; Replay Scene: <span id="replay-scene-name"></span></h3>
+      <input type="text" id="replay-env-id" placeholder="envId (required)">
+      <input type="text" id="replay-vars" placeholder='Variables: {"key":"value"} (optional)'>
+      <div class="btn-row">
+        <button class="btn" onclick="closeReplayDialog()">Cancel</button>
+        <button class="btn primary" id="btn-replay-confirm">&#x25B6; Replay</button>
+      </div>
     </div>
   </div>
   <!-- SSE Panel -->
@@ -427,6 +478,137 @@ function resetParams() {
   else paramsEditor.value = '{}';
 }
 
+// ── Scenes Management ──
+let scenes = [];
+let selectedScene = null;
+let replaySceneName = null;
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelector('.tab[data-tab="'+tab+'"]').classList.add('active');
+  document.getElementById('tab-'+tab).classList.add('active');
+  if (tab === 'scenes') fetchScenes();
+}
+
+async function rpcCall(method, params) {
+  const id = 's-' + (++historyIdx);
+  const resp = await fetch('/message', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({jsonrpc:'2.0', id, method, params})
+  });
+  const j = await resp.json();
+  if (j.error) throw new Error(j.error.message);
+  return j.result;
+}
+
+async function fetchScenes() {
+  try {
+    const result = await rpcCall('tools/call', {name:'scene_list',arguments:{}});
+    const text = result.content[0].text;
+    const data = JSON.parse(text);
+    scenes = data.scenes || [];
+    renderSceneList();
+  } catch(e) {
+    document.getElementById('scene-list').innerHTML = '<div style="color:var(--red);font-size:11px;padding:12px">Failed: '+esc(e.message)+'</div>';
+  }
+}
+
+function renderSceneList() {
+  const el = document.getElementById('scene-list');
+  document.getElementById('scene-count').textContent = scenes.length + ' scenes';
+  if (scenes.length === 0) {
+    el.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:12px">No saved scenes. Use record_start &rarr; actions &rarr; record_stop to create one.</div>';
+    return;
+  }
+  el.innerHTML = scenes.map((s,i) =>
+    '<div class="scene-item'+(selectedScene === s.name ? ' open' : '')+'" id="scene-'+i+'">' +
+      '<div class="scene-name" onclick="toggleScene(\''+esc(s.name)+'\','+i+')">'+esc(s.name)+'</div>' +
+      '<div class="scene-meta">'+s.stepCount+' steps &middot; '+(s.description ? esc(s.description) : 'no description')+' &middot; '+esc(s.createdAt||'')+'</div>' +
+      '<div class="scene-actions">' +
+        '<button class="btn small" onclick="viewSceneDetail(\''+esc(s.name)+'\')">&#x1F50D; View</button>' +
+        '<button class="btn small" onclick="openReplayDialog(\''+esc(s.name)+'\')">&#x25B6; Replay</button>' +
+        '<button class="btn small danger" onclick="deleteSceneConfirm(\''+esc(s.name)+'\')">&#x1F5D1; Delete</button>' +
+      '</div>' +
+      '<div class="scene-detail" id="scene-detail-'+i+'"></div>' +
+    '</div>'
+  ).join('');
+}
+
+function toggleScene(name, idx) {
+  if (selectedScene === name) {
+    selectedScene = null;
+  } else {
+    selectedScene = name;
+  }
+  renderSceneList();
+}
+
+async function viewSceneDetail(name) {
+  const idx = scenes.findIndex(s => s.name === name);
+  if (idx < 0) return;
+  const el = document.getElementById('scene-detail-'+idx);
+  el.innerHTML = '<span style="color:var(--text2);font-size:10px">Loading...</span>';
+  try {
+    const result = await rpcCall('tools/call', {name:'scene_get',arguments:{name}});
+    const text = result.content[0].text;
+    const data = JSON.parse(text);
+    el.innerHTML = '<pre>'+esc(formatJSON(data))+'</pre>';
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--red);font-size:10px">Error: '+esc(e.message)+'</span>';
+  }
+}
+
+async function deleteSceneConfirm(name) {
+  if (!confirm('Delete scene "'+name+'"? This cannot be undone.')) return;
+  try {
+    await rpcCall('tools/call', {name:'scene_delete',arguments:{name}});
+    selectedScene = null;
+    fetchScenes();
+  } catch(e) {
+    alert('Delete failed: '+e.message);
+  }
+}
+
+function openReplayDialog(name) {
+  replaySceneName = name;
+  document.getElementById('replay-scene-name').textContent = name;
+  document.getElementById('replay-env-id').value = '';
+  document.getElementById('replay-vars').value = '';
+  document.getElementById('replay-dialog').classList.add('open');
+}
+
+function closeReplayDialog() {
+  replaySceneName = null;
+  document.getElementById('replay-dialog').classList.remove('open');
+}
+
+async function confirmReplay() {
+  const envId = document.getElementById('replay-env-id').value.trim();
+  if (!envId) { alert('envId is required'); return; }
+
+  let vars = {};
+  const varsRaw = document.getElementById('replay-vars').value.trim();
+  if (varsRaw) {
+    try { vars = JSON.parse(varsRaw); } catch(e) { alert('Invalid variables JSON: '+e.message); return; }
+  }
+
+  closeReplayDialog();
+  const args = {name: replaySceneName, envId: envId};
+  if (Object.keys(vars).length > 0) args.variables = vars;
+  appendSSE('system', 'Replaying scene: '+replaySceneName+' on '+envId);
+  try {
+    const result = await rpcCall('tools/call', {name:'scene_replay', arguments: args});
+    const text = result.content[0].text;
+    appendSSE('scene-replay', text);
+    // Also add to call history
+    addHistory('scene_replay', args, result, now(), false);
+  } catch(e) {
+    appendSSE('scene-replay', 'Replay error: '+e.message);
+  }
+}
+
 // ── Event bindings ──
 toolSearch.addEventListener('input', () => renderTools(toolSearch.value));
 $('btn-format').addEventListener('click', formatParams);
@@ -441,10 +623,20 @@ $('btn-clear-history').addEventListener('click', () => {
   callHistory = [];
   renderHistory();
 });
+$('btn-refresh-scenes').addEventListener('click', fetchScenes);
+$('btn-replay-confirm').addEventListener('click', confirmReplay);
+document.getElementById('replay-dialog').addEventListener('click', function(e) {
+  if (e.target === this) closeReplayDialog();
+});
 
 // Ctrl+Enter to call
 paramsEditor.addEventListener('keydown', (e) => {
   if (e.ctrlKey && e.key === 'Enter') callTool();
+});
+
+// Esc to close replay dialog
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeReplayDialog();
 });
 
 // ── Initialize ──

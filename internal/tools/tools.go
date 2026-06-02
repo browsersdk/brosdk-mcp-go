@@ -4,9 +4,14 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/browsersdk/brosdk-mcp-go/internal/brosdk"
 	"github.com/browsersdk/brosdk-mcp-go/internal/mcp"
+	"github.com/browsersdk/brosdk-mcp-go/internal/recorder"
 )
 
 // All returns the full list of tool definitions.
@@ -647,6 +652,102 @@ func All() []mcp.ToolDef {
 				}
 			}`),
 		},
+
+		// ── Record & Replay ─────────────────────────────────────────────────
+		{
+			Name:        "record_start",
+			Description: "Start recording browser actions. All subsequent tool calls (except recorder tools) will be captured as steps.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["envId"],
+				"properties":{
+					"envId":{"type":"string","description":"ID of the browser environment to record against"}
+				}
+			}`),
+		},
+		{
+			Name:        "record_stop",
+			Description: "Stop recording and auto-save the captured scene to scenes/{name}.json. No need to call scene_save separately.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["name"],
+				"properties":{
+					"name":{"type":"string","description":"Scene file name (without extension, e.g. 'login_flow')"},
+					"description":{"type":"string","description":"Optional human-readable description for the scene"}
+				}
+			}`),
+		},
+		{
+			Name:        "record_status",
+			Description: "Check whether a recording is currently active and how many steps have been captured.",
+			InputSchema: schema(`{"type":"object","properties":{}}`),
+		},
+		{
+			Name:        "scene_save",
+			Description: "Save a recorded scene to disk. Rejects if a scene with the same name already exists.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["name","scene"],
+				"properties":{
+					"name":{"type":"string","description":"Scene file name (without extension, e.g. 'login_flow')"},
+					"scene":{"type":"object","description":"The scene object (from record_stop) with optional description field"}
+				}
+			}`),
+		},
+		{
+			Name:        "scene_list",
+			Description: "List all saved scenes with summary info (name, step count, description, createdAt).",
+			InputSchema: schema(`{"type":"object","properties":{}}`),
+		},
+		{
+			Name:        "scene_get",
+			Description: "Get a single scene by name, including all steps and params.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["name"],
+				"properties":{
+					"name":{"type":"string","description":"Scene file name (without extension)"}
+				}
+			}`),
+		},
+		{
+			Name:        "scene_update",
+			Description: "Overwrite an existing scene with a new scene object. Useful for editing steps or variables.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["name","scene"],
+				"properties":{
+					"name":{"type":"string","description":"Scene file name (without extension)"},
+					"scene":{"type":"object","description":"The full scene object to save"}
+				}
+			}`),
+		},
+		{
+			Name:        "scene_delete",
+			Description: "Delete a saved scene by name.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["name"],
+				"properties":{
+					"name":{"type":"string","description":"Scene file name (without extension)"}
+				}
+			}`),
+		},
+		{
+			Name:        "scene_replay",
+			Description: "Replay a saved scene against a browser environment. Supports {{variable}} substitution in step params. Returns per-step results.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["name","envId"],
+				"properties":{
+					"name":{"type":"string","description":"Scene file name (without extension)"},
+					"envId":{"type":"string","description":"Target browser environment ID"},
+					"variables":{"type":"object","description":"Key-value pairs for {{variable}} substitution in step params"},
+					"stopOnError":{"type":"boolean","description":"Stop replay on first error (default false)"},
+					"stepDelay":{"type":"number","description":"Delay between steps in milliseconds (default 500)"}
+				}
+			}`),
+		},
 	}
 }
 
@@ -662,9 +763,27 @@ func schema(s string) json.RawMessage {
 // ---------- Handler ----------
 
 // Handler returns a mcp.Handler that dispatches tool calls to the Manager.
+// The dispatch function is exported as Dispatch for reuse by the recorder.Player.
 func Handler(mgr *brosdk.Manager) mcp.Handler {
 	return func(name string, params json.RawMessage) (string, bool) {
-		result, err := dispatch(mgr, name, params)
+		// 1. unmarshal params once — shared by recorder hook and dispatch
+		var p map[string]any
+		if len(params) > 0 {
+			if err := json.Unmarshal(params, &p); err != nil {
+				return err.Error(), true
+			}
+		}
+		if p == nil {
+			p = map[string]any{}
+		}
+
+		// 2. Recorder hook — capture every tool call except recorder tools themselves
+		if rec := recorder.Get(); rec.IsRecording() && !isRecorderTool(name) {
+			rec.Capture(name, recorder.SanitizeParams(p))
+		}
+
+		// 3. dispatch
+		result, err := Dispatch(mgr, name, p)
 		if err != nil {
 			return err.Error(), true
 		}
@@ -672,17 +791,25 @@ func Handler(mgr *brosdk.Manager) mcp.Handler {
 	}
 }
 
-func dispatch(mgr *brosdk.Manager, name string, params json.RawMessage) (string, error) {
-	var p map[string]any
-	if len(params) > 0 {
-		if err := json.Unmarshal(params, &p); err != nil {
-			return "", fmt.Errorf("invalid params: %w", err)
-		}
-	}
-	if p == nil {
-		p = map[string]any{}
-	}
+// recorderToolNames lists tools managed by the recorder itself.
+// These are never captured during recording.
+var recorderToolNames = map[string]bool{
+	"record_start":  true,
+	"record_stop":   true,
+	"record_status": true,
+	"scene_save":    true,
+	"scene_list":    true,
+	"scene_get":     true,
+	"scene_update":  true,
+	"scene_delete":  true,
+	"scene_replay":  true,
+}
 
+func isRecorderTool(name string) bool { return recorderToolNames[name] }
+
+// Dispatch routes a tool call to the appropriate Manager method.
+// Exported so recorder.Player can reuse the same dispatch logic.
+func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error) {
 	switch name {
 	// ── SDK ──
 	case "sdk_info":
@@ -1208,9 +1335,265 @@ func dispatch(mgr *brosdk.Manager, name string, params json.RawMessage) (string,
 		}
 		return resp.Response, nil
 
+	// ── Record & Replay ──
+	case "record_start":
+		envID := str(p, "envId")
+		if envID == "" {
+			return "", fmt.Errorf("envId is required")
+		}
+		if err := recorder.Get().Start(envID); err != nil {
+			return "", err
+		}
+		return `{"recording":true}`, nil
+
+	case "record_stop":
+		name := str(p, "name")
+		if name == "" {
+			return "", fmt.Errorf("name is required")
+		}
+		scene, err := recorder.Get().Stop()
+		if err != nil {
+			return "", err
+		}
+		scene.Name = name
+		if desc := str(p, "description"); desc != "" {
+			scene.Description = desc
+		}
+		if err := validateScene(scene); err != nil {
+			return "", err
+		}
+		path := filepath.Join(ScenesDir(), name+".json")
+		data, err := json.MarshalIndent(scene, "", "  ")
+		if err != nil {
+			return "", fmt.Errorf("marshal scene: %w", err)
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return "", fmt.Errorf("create scenes dir: %w", err)
+		}
+		if err := os.WriteFile(path, data, 0644); err != nil {
+			return "", fmt.Errorf("write scene: %w", err)
+		}
+		return fmt.Sprintf(`{"saved":true,"path":%q,"steps":%d}`, path, len(scene.Steps)), nil
+
+	case "record_status":
+		b, _ := json.Marshal(recorder.Get().Status())
+		return string(b), nil
+
+	case "scene_save":
+		name := str(p, "name")
+		if name == "" {
+			return "", fmt.Errorf("name is required")
+		}
+		sceneRaw, ok := p["scene"]
+		if !ok {
+			return "", fmt.Errorf("scene is required")
+		}
+		sceneJSON, err := json.Marshal(sceneRaw)
+		if err != nil {
+			return "", fmt.Errorf("invalid scene: %w", err)
+		}
+		var scene recorder.Scene
+		if err := json.Unmarshal(sceneJSON, &scene); err != nil {
+			return "", fmt.Errorf("invalid scene: %w", err)
+		}
+		if err := validateScene(&scene); err != nil {
+			return "", err
+		}
+		path := filepath.Join(ScenesDir(), name+".json")
+		if _, err := os.Stat(path); err == nil {
+			return "", fmt.Errorf("scene already exists: %s", name)
+		}
+		// ensure description is carried over
+		if desc, ok := sceneRaw.(map[string]any)["description"].(string); ok {
+			scene.Description = desc
+		}
+		scene.Name = name
+		data, err := json.MarshalIndent(scene, "", "  ")
+		if err != nil {
+			return "", fmt.Errorf("marshal scene: %w", err)
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return "", fmt.Errorf("create scenes dir: %w", err)
+		}
+		if err := os.WriteFile(path, data, 0644); err != nil {
+			return "", fmt.Errorf("write scene: %w", err)
+		}
+		return fmt.Sprintf(`{"saved":true,"path":%q}`, path), nil
+
+	case "scene_list":
+		dir := ScenesDir()
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return `{"scenes":[]}`, nil
+			}
+			return "", fmt.Errorf("read scenes dir: %w", err)
+		}
+		type summary struct {
+			Name        string `json:"name"`
+			StepCount   int    `json:"stepCount"`
+			Description string `json:"description,omitempty"`
+			CreatedAt   string `json:"createdAt"`
+		}
+		var scenes []summary
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+			if err != nil {
+				continue
+			}
+			var s struct {
+				Steps       []recorder.Step `json:"steps"`
+				Description string          `json:"description"`
+				CreatedAt   string          `json:"createdAt"`
+			}
+			if err := json.Unmarshal(data, &s); err != nil {
+				continue
+			}
+			scenes = append(scenes, summary{
+				Name:        strings.TrimSuffix(e.Name(), ".json"),
+				StepCount:   len(s.Steps),
+				Description: s.Description,
+				CreatedAt:   s.CreatedAt,
+			})
+		}
+		b, _ := json.Marshal(map[string]any{"scenes": scenes})
+		return string(b), nil
+
+	case "scene_get":
+		name := str(p, "name")
+		if name == "" {
+			return "", fmt.Errorf("name is required")
+		}
+		path := filepath.Join(ScenesDir(), name+".json")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("scene not found: %s", name)
+		}
+		// Return raw JSON directly.
+		return string(data), nil
+
+	case "scene_update":
+		name := str(p, "name")
+		if name == "" {
+			return "", fmt.Errorf("name is required")
+		}
+		path := filepath.Join(ScenesDir(), name+".json")
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return "", fmt.Errorf("scene not found: %s", name)
+		}
+		sceneRaw, ok := p["scene"]
+		if !ok {
+			return "", fmt.Errorf("scene is required")
+		}
+		sceneJSON, err := json.Marshal(sceneRaw)
+		if err != nil {
+			return "", fmt.Errorf("invalid scene: %w", err)
+		}
+		var scene recorder.Scene
+		if err := json.Unmarshal(sceneJSON, &scene); err != nil {
+			return "", fmt.Errorf("invalid scene: %w", err)
+		}
+		if err := validateScene(&scene); err != nil {
+			return "", err
+		}
+		scene.Name = name
+		if desc, ok := sceneRaw.(map[string]any)["description"].(string); ok {
+			scene.Description = desc
+		}
+		data, err := json.MarshalIndent(scene, "", "  ")
+		if err != nil {
+			return "", fmt.Errorf("marshal scene: %w", err)
+		}
+		if err := os.WriteFile(path, data, 0644); err != nil {
+			return "", fmt.Errorf("write scene: %w", err)
+		}
+		return fmt.Sprintf(`{"saved":true,"path":%q}`, path), nil
+
+	case "scene_delete":
+		name := str(p, "name")
+		if name == "" {
+			return "", fmt.Errorf("name is required")
+		}
+		path := filepath.Join(ScenesDir(), name+".json")
+		if err := os.Remove(path); err != nil {
+			return "", fmt.Errorf("delete scene: %w", err)
+		}
+		return `{"deleted":true}`, nil
+
+	case "scene_replay":
+		return replayScene(mgr, p)
+
 	default:
 		return "", fmt.Errorf("unknown tool: %s", name)
 	}
+}
+
+// ---------- scene helpers ----------
+
+var scenesDir string
+
+// SetScenesDir sets the directory for scene file storage (called from main.go).
+func SetScenesDir(dir string) { scenesDir = dir }
+
+// ScenesDir returns the scenes storage directory.
+func ScenesDir() string {
+	if scenesDir == "" {
+		scenesDir = "scenes"
+	}
+	return scenesDir
+}
+
+func validateScene(s *recorder.Scene) error {
+	if s.Version != 1 {
+		return fmt.Errorf("unsupported scene version: %d", s.Version)
+	}
+	if len(s.Steps) == 0 {
+		return fmt.Errorf("scene has no steps")
+	}
+	if len(s.Steps) > recorder.MaxSteps {
+		return fmt.Errorf("scene has %d steps, max is %d", len(s.Steps), recorder.MaxSteps)
+	}
+	return nil
+}
+
+// replayScene is the dispatch helper for scene_replay.
+func replayScene(mgr *brosdk.Manager, p map[string]any) (string, error) {
+	name := str(p, "name")
+	envID := str(p, "envId")
+	if name == "" || envID == "" {
+		return "", fmt.Errorf("name and envId are required")
+	}
+
+	path := filepath.Join(ScenesDir(), name+".json")
+	scene, err := recorder.LoadScene(path)
+	if err != nil {
+		return "", err
+	}
+
+	opts := recorder.ReplayOptions{
+		EnvID:       envID,
+		StopOnError: boolVal(p, "stopOnError"),
+	}
+
+	if vars, ok := p["variables"].(map[string]any); ok {
+		opts.Variables = make(map[string]string, len(vars))
+		for k, v := range vars {
+			if s, ok := v.(string); ok {
+				opts.Variables[k] = s
+			}
+		}
+	}
+	if delay, ok := p["stepDelay"].(float64); ok && delay > 0 {
+		opts.StepDelay = time.Duration(delay) * time.Millisecond
+	}
+
+	player := recorder.NewPlayer(mgr, Dispatch)
+	result := player.Replay(scene, opts)
+	b, _ := json.Marshal(result)
+	return string(b), nil
 }
 
 // ---------- param helpers ----------

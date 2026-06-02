@@ -49,40 +49,43 @@ func main() {
 	}
 	log.Printf("BroSDK library loaded from %s", libPath)
 
-	// ── Auto-init SDK from config ────────────────────────────────────────────
-	cfg, err := loadConfigOrNil()
+	// ── Auto-init SDK from config (apiKey is required) ──────────────────────
+	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("failed to read config: %v", err)
 	}
-	if cfg != nil {
-		opts := brosdk.InitOptions{
-			UserSig:   cfg.UserSig,
-			ApiKey:    cfg.ApiKey,
-			WorkDir:   cfg.WorkDir,
-			Port:      cfg.Port,
-			SdkApiURL: cfg.SdkApiURL,
-			Debug:     cfg.Debug,
-		}
-		if opts.WorkDir == "" {
-			opts.WorkDir = filepath.Join(".", "brosdk")
-		}
-		if opts.Port <= 0 {
-			opts.Port = 5811
-		}
-		if err := os.MkdirAll(opts.WorkDir, 0755); err != nil {
-			log.Fatalf("failed to create workDir %q: %v", opts.WorkDir, err)
-		}
-		log.Printf("auto-init: apiKey=%s port=%d workDir=%s", maskString(opts.ApiKey), opts.Port, opts.WorkDir)
-		resp, err := mgr.Init(opts)
-		if err != nil {
-			log.Fatalf("sdk_init failed: %v", err)
-		}
-		log.Printf("sdk_init ok, code=%d response=%s", resp.Code, resp.Response)
-	} else {
-		log.Println("no config file found, skipping auto-init (provide config.json with apiKey)")
+	if cfg == nil {
+		log.Fatalf("no config file found – provide config.json with at least apiKey")
 	}
+	if cfg.ApiKey == "" {
+		log.Fatalf("apiKey is missing in config – sdk_init requires a valid apiKey")
+	}
+	opts := brosdk.InitOptions{
+		UserSig:   cfg.UserSig,
+		ApiKey:    cfg.ApiKey,
+		WorkDir:   cfg.WorkDir,
+		Port:      cfg.Port,
+		SdkApiURL: cfg.SdkApiURL,
+		Debug:     cfg.Debug,
+	}
+	if opts.WorkDir == "" {
+		opts.WorkDir = filepath.Join(".", "brosdk")
+	}
+	if opts.Port <= 0 {
+		opts.Port = 5811
+	}
+	if err := os.MkdirAll(opts.WorkDir, 0755); err != nil {
+		log.Fatalf("failed to create workDir %q: %v", opts.WorkDir, err)
+	}
+	log.Printf("auto-init: apiKey=%s port=%d workDir=%s", maskString(opts.ApiKey), opts.Port, opts.WorkDir)
+	resp, err := mgr.Init(opts)
+	if err != nil {
+		log.Fatalf("sdk_init failed: %v", err)
+	}
+	log.Printf("sdk_init ok, code=%d response=%s", resp.Code, resp.Response)
 
 	// ── Wire SDK events → SSE broadcast ─────────────────────────────────────
+	tools.SetScenesDir(filepath.Join(opts.WorkDir, "scenes"))
 	srv := mcp.NewServer(
 		mcp.ServerInfo{Name: "brosdk-mcp", Version: version},
 		tools.All(),
@@ -136,16 +139,6 @@ func main() {
 // This is the legacy fallback; EnsureLibrary in download.go does the full logic.
 func resolveLibPath(explicit string) string {
 	return explicit
-}
-
-// loadConfigOrNil reads config.local.json → config.json in order.
-// Returns (nil, nil) when neither file is present.
-func loadConfigOrNil() (*config.Config, error) {
-	cfg, err := config.Load()
-	if err != nil {
-		return nil, err
-	}
-	return cfg, nil
 }
 
 // maskString returns a shortened, masked version for logging.
