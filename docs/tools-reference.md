@@ -1,6 +1,8 @@
 # MCP Tools Reference
 
-> 65 tools, 4 categories + recorder/scene (9 tools). All async tools return `reqId` immediately; results delivered via SSE `sdk-event`.
+> 72 tools, 5 categories + recorder/scene (9 tools). All async tools return `reqId` immediately; results delivered via SSE `sdk-event`.
+>
+> **envId optional**: Most Browser Actions support `browser_select`-based auto-env resolution. Only `browser_open`, `browser_close`, `browser_select`, `browser_command`, and `env_*` tools require explicit `envId`.
 
 ## 1. SDK Info (3 tools)
 
@@ -10,27 +12,28 @@
 | `sdk_token_update` | async | `userSig` (required) | `reqId` | Refresh userSig |
 | `sdk_get_user_sig` | sync | `apiKey` (required), `duration` | `{userSig}` | Obtain userSig via API |
 
-## 2. Browser Control (5 tools)
+## 2. Browser Control (6 tools)
 
 | Tool | Type | Parameters | Returns | Description |
 |------|------|-----------|---------|-------------|
 | `browser_install` | async | `channel` | `reqId` | Install/update browser core |
 | `browser_info` | sync | — | `{envs[]}` | List running environments |
+| `browser_select` | sync | `envId` (required) | `{envId}` | Set active browser environment for subsequent actions |
 | `browser_open` | async | `envId` (required), `urls[]`, `args[]` | `reqId` | Open browser; wait for `browser-open-success` |
 | `browser_close` | async | `envId` (required) | `reqId` | Close browser |
 | `browser_command` | sync | `envId`, `method` (required), `params`, `sessionId` | CDP response | Raw CDP command |
 
-## 3. Browser Actions (43 tools)
+## 3. Browser Actions (50 tools)
 
 ### 3.1 Page Navigation
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
 | `browser_navigate` | `envId`, `url` (required) | Navigate to URL; returns `{targetId, sessionId}` |
-| `browser_reload` | `envId` (required), `sessionId` | Reload the current page |
-| `browser_back` | `envId` (required), `sessionId` | Navigate back in browser history |
-| `browser_forward` | `envId` (required), `sessionId` | Navigate forward in browser history |
-| `browser_snapshot` | `envId` (required), `sessionId`, `interactiveOnly` | Capture accessibility tree (AX Tree). `interactiveOnly=true` filters to interactive nodes only, reducing output 10-50x |
+| `browser_reload` | `envId`, `sessionId` | Reload the current page |
+| `browser_back` | `envId`, `sessionId` | Navigate back in browser history |
+| `browser_forward` | `envId`, `sessionId` | Navigate forward in browser history |
+| `browser_snapshot` | `envId`, `sessionId`, `interactiveOnly` | Capture accessibility tree (AX Tree). `interactiveOnly=true` filters to interactive nodes only, reducing output 10-50x |
 
 ### 3.2 Mouse Actions
 
@@ -82,8 +85,8 @@
 | Tool | Parameters | Description |
 |------|-----------|-------------|
 | `browser_upload_file` | `envId`, `selector`, `files[]` (required), `sessionId` | Upload files to file input |
-| `browser_screenshot` | `envId` (required), `path`, `dir`, `format`, `quality`, `fullPage`, `sessionId` | Screenshot, defaults to workDir/screenshots/, returns absolute path |
-| `browser_pdf` | `envId` (required), `path`, `sessionId` | Generate PDF, defaults to workDir/pdfs/output.pdf, returns absolute path |
+| `browser_screenshot` | `envId`, `path`, `dir`, `format`, `quality`, `fullPage`, `sessionId` | Screenshot, defaults to workDir/screenshots/, returns absolute path |
+| `browser_pdf` | `envId`, `path`, `sessionId` | Generate PDF, defaults to workDir/pdfs/output.pdf, returns absolute path |
 
 ### 3.7 Text Finding / Scripting
 
@@ -94,18 +97,41 @@
 | `browser_get_value` | `envId`, `selector` (required), `sessionId` | Return value attribute of input element |
 | `browser_evaluate` | `envId`, `expression` (required), `sessionId` | Execute JavaScript and return result |
 
-### 3.8 Agent-Friendly Tools (NEW)
+### 3.8 Tab Management (NEW)
+
+Multi-tab workflow for complex browser automation scenarios. New tabs become the active tab; background tabs persist.
+
+| Tool | Parameters | Returns | Description |
+|------|-----------|---------|-------------|
+| `browser_new_tab` | `envId` | `{tabId}` | Create blank tab; previous active tab is saved as background |
+| `browser_close_tab` | `envId`, `tabId` (required) | `{ok}` | Close tab by ID. Use `"__active__"` to close current active tab. Background tab is auto-promoted |
+| `browser_list_tabs` | `envId` | `{tabs[{tabId,title,url,isActive}], count}` | List all open tabs with metadata |
+
+### 3.9 Page Content (NEW)
+
+| Tool | Parameters | Returns | Description |
+|------|-----------|---------|-------------|
+| `browser_get_html` | `envId` | `{html}` | Full page HTML source; prefer `browser_snapshot` or `browser_get_text` for large pages |
+
+### 3.10 Cookie Management (NEW)
+
+| Tool | Parameters | Returns | Description |
+|------|-----------|---------|-------------|
+| `browser_get_cookies` | `envId`, `urls[]` | `[{name,value,domain,path,...}]` | Get all cookies (or filter by URL list) |
+| `browser_set_cookies` | `envId`, `cookies[{name,value,url,domain,path,secure,httpOnly}]` (required) | `{ok}` | Set cookies on current tab |
+
+### 3.11 Agent-Friendly Tools
 
 Designed for AI agent workflows — reduce token usage, simplify element targeting, and handle async page state.
 
 | Tool | Parameters | Returns | Description |
 |------|-----------|---------|-------------|
-| `browser_find_ref` | `envId` (required), `role`, `name`, `value` | `{refs[{ref,role,name,value}], count}` | Search AX tree by role/name/value; returns ref list for `_ref` tools |
-| `browser_wait` | `envId` (required), `text`, `role`, `name`, `timeoutMs` (default 5000) | `{found,elapsedMs}` | Poll snapshot until matching element appears |
-| `browser_page_state` | `envId` (required) | `{title, url, readyState}` | Fast page metadata — no snapshot overhead |
-| `browser_exists` | `envId` (required), `role`, `name` | `{exists}` | Boolean element existence check |
-| `browser_dialog` | `envId` (required), `action` (accept/dismiss) | `{action, message}` | Handle JS alert/confirm/prompt via page-side capture |
-| `browser_fill_form` | `envId` (required), `fields[{ref,value}]`, `submitRef` | `{filled, submitted}` | Batch fill form fields + optional submit |
+| `browser_find_ref` | `envId`, `role`, `name`, `value`, `limit` | `{refs[{ref,role,name,value}], count}` | Search AX tree by role/name/value; returns ref list for `_ref` tools |
+| `browser_wait` | `envId`, `waitFor`, `text`, `role`, `name`, `selector`, `timeout`, `delay` | `{found,elapsedMs}` / `{readyState}` | Wait for condition. `waitFor` modes: `navigation` (page readyState), `selector` (CSS appears), `text` (text visible), `time` (fixed ms). Omitting `waitFor` auto-detects from params |
+| `browser_page_state` | `envId` | `{title, url, readyState}` | Fast page metadata — no snapshot overhead |
+| `browser_exists` | `envId`, `role`, `name`, `value`, `selector` | `{exists}` | Boolean element existence check |
+| `browser_dialog` | `envId`, `action` (accept/dismiss), `promptText` | `{action, message}` | Handle JS alert/confirm/prompt via page-side capture |
+| `browser_fill_form` | `envId`, `fields[{ref,selector,value}]`, `submitRef`, `submitSelector` | `{filled, submitted}` | Batch fill form fields + optional submit |
 
 ## 4. Environment Management (5 tools)
 
@@ -131,9 +157,10 @@ Designed for AI agent workflows — reduce token usage, simplify element targeti
 | `scene_replay` | `name` (required), `envId`, `variables`, `stopOnError`, `stepDelay`, `applyHumanDelay` | Replay scene with **WaitFor guards** + optional human delay |
 | `scene_save` | `name` (required), `steps` | Manually save scene (rare; `record_stop` auto-saves) |
 
-**Replay features (NEW):**
+**Replay features:**
 - **WaitFor guard**: Steps auto-infer post-conditions (e.g. `readyState:complete` after navigate/click). Replay blocks until satisfied — no blind sleep.
 - **HumanDelay**: Recorded inter-step human pauses captured as `HumanDelayMs`. Replay optionally applies them (`applyHumanDelay=true`, cap 3s).
+- **Ref fingerprint**: `_ref` tools auto-save snapshot fingerprint (name+role+value) during recording; replay matches DOM nodes dynamically.
 
 ---
 
@@ -149,3 +176,13 @@ browser_snapshot → AX Tree with backendDOMNodeId → browser_*_ref(envId, ref=
 - `findBackendDOMNodeID` does **exact match** on AX `name.value`
 - Always search by the target element's accessible name (not child text)
 - Use `aria-label` on elements inside labels to ensure correct AX matching
+
+---
+
+## browser_select Workflow
+
+```
+browser_select(envId=...) → subsequent Browser Actions omit envId → auto-resolved
+```
+
+Once `browser_select` sets an active environment, all 50 Browser Actions + 6 Agent-Friendly tools can omit `envId`. Only `browser_open`, `browser_close`, `browser_select`, `browser_command`, and `env_*` still require explicit `envId`.
