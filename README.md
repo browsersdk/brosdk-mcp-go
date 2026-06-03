@@ -13,11 +13,11 @@
 |------|------|--------|
 | **README.md**（本文件） | 项目总览、API 速查、配置、运行 | 首次了解项目 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计、技术栈、设计决策 | 理解实现原理 / 贡献代码 |
-| [docs/tools-reference.md](docs/tools-reference.md) | 65 个 MCP Tool 完整 API 参考 | 查找特定 tool 的参数/返回值 |
+| [docs/tools-reference.md](docs/tools-reference.md) | 72 个 MCP Tool 完整 API 参考 | 查找特定 tool 的参数/返回值 |
 
 ## 功能概览
 
-- 通过 66 个 MCP Tool 暴露 BroSDK 全部能力：SDK 生命周期、浏览器控制、浏览器高级操作、环境 CRUD、**浏览器录制回放**
+- 通过 72 个 MCP Tool 暴露 BroSDK 全部能力：SDK 生命周期、浏览器控制、浏览器高级操作、环境 CRUD、**浏览器录制回放**
 - 基于 [chromedp](https://github.com/chromedp/chromedp) 的高层浏览器操作——点击、输入、截图、PDF 等，无需手写 CDP 命令
 - 保留 `browser_command` 透明 CDP 代理，支持所有 DevTools 命令的高级/自定义场景
 - **录制回放**：`record_start` → 操作（自动捕获）→ `record_stop` 自动保存场景，`scene_replay` 一键回放，支持 `{{变量}}` 替换
@@ -146,7 +146,7 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | `/message` | POST | JSON-RPC 2.0 请求端点         |
 | `/health`  | GET  | 健康检查（返回 `200 OK`）      |
 
-## MCP Tools（66 个）
+## MCP Tools（72 个）
 
 ### SDK 信息（3 个）
 
@@ -167,7 +167,7 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | `browser_select`   | Sync     | `envId` (必填)                             | **设置激活环境**；后续 Browser Actions 未指定 `envId` 时自动使用此环境 |
 | `browser_command` | Sync     | `envId`, `method` (必填), `params`, `sessionId` | 发送原始 CDP 命令到浏览器                       |
 
-### 浏览器高级操作（44 个）
+### 浏览器高级操作（50 个）
 
 > **`envId` 参数说明**：所有 Browser Actions 的 `envId` 参数现改为**可选**。
 > 先用 `browser_select` 设置激活环境，后续操作可省略 `envId`。
@@ -182,6 +182,27 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | `browser_back`    | `envId`, `sessionId`                        | 浏览器后退（envId 可省略，使用激活环境）          |
 | `browser_forward` | `envId`, `sessionId`                        | 浏览器前进（envId 可省略，使用激活环境）          |
 | `browser_snapshot`| `envId`, `sessionId`                        | 获取页面无障碍树，含 `backendDOMNodeId`，供 `_ref` 工具使用（envId 可省略） |
+
+#### Tab 管理
+
+| Tool                 | 参数                                         | 说明                                              |
+|----------------------|---------------------------------------------|---------------------------------------------------|
+| `browser_new_tab`    | `envId`                                      | 创建新空白 Tab，返回 `{tabId}`；新 tab 自动成为活跃 tab |
+| `browser_close_tab`  | `envId`, `tabId` (必填)                      | 关闭指定 tab（`"__active__"` 表示当前活跃 tab）        |
+| `browser_list_tabs`  | `envId`                                      | 列出所有打开的 tab，返回 `[{tabId, title, url, isActive}]` |
+
+#### 页面内容
+
+| Tool                 | 参数                                         | 说明                                              |
+|----------------------|---------------------------------------------|---------------------------------------------------|
+| `browser_get_html`   | `envId`                                      | 获取当前页面完整 HTML 源码；内容可能很大，优先用 `browser_snapshot` 或 `browser_get_text` |
+
+#### Cookie 管理
+
+| Tool                    | 参数                                         | 说明                                              |
+|-------------------------|---------------------------------------------|---------------------------------------------------|
+| `browser_get_cookies`   | `envId`, `urls`                              | 获取当前 tab 的 cookies；可选按 URL 过滤              |
+| `browser_set_cookies`   | `envId`, `cookies` (必填)                    | 设置 cookies，每项支持 `{name, value, url, domain, path, secure, httpOnly}` |
 
 #### 鼠标操作
 
@@ -249,12 +270,12 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 
 | Tool                    | 参数                                              | 说明                                     |
 |-------------------------|--------------------------------------------------|------------------------------------------|
-| `browser_find_ref`      | `envId` (必填), `role`, `name`, `value`, `limit`   | 搜索 AX 树元素并返回 ref 列表（比完整 snapshot 小 80%） |
-| `browser_wait`          | `envId` (必填), `text`, `role`, `name`, `selector`, `timeout` | 轮询等待元素出现（200ms 间隔），替代盲 sleep |
-| `browser_page_state`    | `envId` (必填), `sessionId`                        | 返回 `{readyState, title, url}` 三元组，判断页面加载状态 |
-| `browser_exists`        | `envId` (必填), `role`, `name`, `value`, `selector`, `sessionId` | 快速检查元素是否存在，返回 boolean |
-| `browser_dialog`        | `envId` (必填), `action`, `promptText`, `sessionId` | 读取/接受/取消浏览器弹窗（alert/confirm/prompt） |
-| `browser_fill_form`     | `envId` (必填), `fields` (必填), `submitSelector`   | 批量填充多字段表单，一次调用替代多次 fill/type |
+| `browser_find_ref`      | `envId`, `role`, `name`, `value`, `limit`   | 搜索 AX 树元素并返回 ref 列表（比完整 snapshot 小 80%） |
+| `browser_wait`          | `envId`, `text`, `role`, `name`, `selector`, `timeout`, `waitFor`, `delay` | 等待条件满足；`waitFor` 支持 `navigation`（页面 readyState）、`selector`（CSS 出现）、`text`（文本出现）、`time`（固定毫秒） |
+| `browser_page_state`    | `envId`, `sessionId`                        | 返回 `{readyState, title, url}` 三元组，判断页面加载状态 |
+| `browser_exists`        | `envId`, `role`, `name`, `value`, `selector`, `sessionId` | 快速检查元素是否存在，返回 boolean |
+| `browser_dialog`        | `envId`, `action`, `promptText`, `sessionId` | 读取/接受/取消浏览器弹窗（alert/confirm/prompt） |
+| `browser_fill_form`     | `envId`, `fields` (必填), `submitSelector`   | 批量填充多字段表单，一次调用替代多次 fill/type |
 
 ### 环境管理（5 个）
 
@@ -437,6 +458,7 @@ SSE 连接每 15 秒发送 `: ping` 心跳保持连接。
 | `e2e_mouse_test.go` | `TestE2E_MouseInteraction` | dblclick/hover/hover_ref/find_click_text |
 | `e2e_scroll_test.go` | `TestE2E_ScrollAndScreenshot` | scroll/scroll_into_view/screenshot/PDF |
 | `e2e_drag_test.go` | `TestE2E_DragAndUpload` | drag/upload_file |
+| `e2e_tab_test.go` | `TestE2E_TabManagement` | new_tab/list_tabs/close_tab/get_html |
 | `e2e_record_test.go` | `TestE2E_RecordReplay_FullFlow` | record_start → 操作 → record_stop → scene_replay |
 | | `TestE2E_RecordReplay_VariableSubstitution` | 变量替换：`{{username}}`/`{{password}}` |
 | | `TestE2E_RecordReplay_StopOnError` | stopOnError 行为 |
@@ -449,9 +471,10 @@ go test -v -run TestE2E -timeout 600s
 go test -v -run TestE2E_FormElements -timeout 300s .
 go test -v -run TestE2E_KeyboardInteraction -timeout 300s .
 go test -v -run TestE2E_SnapshotClickRef -timeout 300s .
+go test -v -run TestE2E_TabManagement -timeout 300s .
 ```
 
-测试覆盖 65 个 MCP tools。仅 `browser_install`（纯异步、耗时过长）未纳入 E2E。
+测试覆盖 72 个 MCP tools。仅 `browser_install`（纯异步、耗时过长）未纳入 E2E。
 
 ## 目录结构
 
@@ -463,9 +486,10 @@ brosdk-mcp-go/
 ├── README_EN.md
 ├── docs/
 │   ├── ARCHITECTURE.md             # 架构设计 + 技术决策
-│   └── tools-reference.md          # 65 个 MCP Tool API 参考
+│   └── tools-reference.md          # 72 个 MCP Tool API 参考
 ├── e2e_test.go                    # E2E 共享基础设施（类型、fixture、helper）
 ├── e2e_record_test.go            # E2E: 录制回放完整流程
+├── e2e_tab_test.go               # E2E: Tab 管理 + get_html
 ├── libs/
 │   ├── brosdk.h                    # C 头文件（参考）
 │   ├── windows-x64/
@@ -493,7 +517,7 @@ brosdk-mcp-go/
     │   ├── server.go              # MCP SSE 服务器（JSON-RPC 2.0 + 广播）
     │   └── inspector.go           # 内嵌 MCP Inspector Web UI
     └── tools/
-        └── tools.go               # 65 个 Tool 定义 + handler dispatch + Recorder hook
+        └── tools.go               # 72 个 Tool 定义 + handler dispatch + Recorder hook
     └── recorder/
         ├── recorder.go            # 录制单例（start/stop/capture/sanitize）
         ├── player.go              # 回放引擎（步骤执行 + 变量替换）

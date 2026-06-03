@@ -16,6 +16,7 @@ import (
 	"github.com/chromedp/cdproto/cdp"
 	cdpdom "github.com/chromedp/cdproto/dom"
 	"github.com/chromedp/cdproto/input"
+	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
@@ -24,11 +25,16 @@ import (
 // ---------- chromedp context management ----------
 
 // browserTab tracks chromedp resources for one browser environment.
+// tabCtx/tabCancel hold the active tab. Additional non-active tabs are
+// stored in tabs/tabCancels maps keyed by internal tab ID (e.g. "tab-1").
 type browserTab struct {
-	allocCtx    context.Context    // remote allocator context (for creating tabs)
-	allocCancel context.CancelFunc // cancels allocator
-	tabCtx      context.Context    // current active tab
-	tabCancel   context.CancelFunc // cancels active tab
+	allocCtx    context.Context                // remote allocator context (shared by all tabs)
+	allocCancel context.CancelFunc             // cancels allocator (and all tabs)
+	tabCtx      context.Context                // active tab context
+	tabCancel   context.CancelFunc             // active tab cancel
+	tabs        map[string]context.Context     // non-active tabs: tabID → tab context
+	tabCancels  map[string]context.CancelFunc // non-active tabs: tabID → cancel func
+	nextTabID   int                             // monotonically increasing tab counter
 }
 
 // ensureBrowser returns the browserTab for envID, creating one if needed.
@@ -41,11 +47,9 @@ func (m *Manager) ensureBrowser(envID string) (*browserTab, error) {
 
 	// Check cached entry: if the allocator context is already done, discard it.
 	if bt != nil && bt.allocCtx.Err() != nil {
+		m.closeAllTabsLocked(bt)
 		if bt.allocCancel != nil {
 			bt.allocCancel()
-		}
-		if bt.tabCancel != nil {
-			bt.tabCancel()
 		}
 		m.mu.Lock()
 		delete(m.browsers, envID)
@@ -67,6 +71,9 @@ func (m *Manager) ensureBrowser(envID string) (*browserTab, error) {
 	bt = &browserTab{
 		allocCtx:    allocCtx,
 		allocCancel: allocCancel,
+		tabs:        make(map[string]context.Context),
+		tabCancels:  make(map[string]context.CancelFunc),
+		nextTabID:   1,
 	}
 
 	m.mu.Lock()
@@ -79,7 +86,7 @@ func (m *Manager) ensureBrowser(envID string) (*browserTab, error) {
 	return bt, nil
 }
 
-// ensureTab returns the active tab context for envID.
+// ensureTab returns the active tab context for envID, creating one if needed.
 func (m *Manager) ensureTab(envID string) (context.Context, error) {
 	bt, err := m.ensureBrowser(envID)
 	if err != nil {
@@ -92,28 +99,214 @@ func (m *Manager) ensureTab(envID string) (context.Context, error) {
 	return bt.tabCtx, nil
 }
 
-// CloseTab tears down the active tab for envID (keeps browser allocator).
-func (m *Manager) CloseTab(envID string) {
-	m.mu.Lock()
-	bt := m.browsers[envID]
-	if bt != nil {
-		if bt.tabCancel != nil {
-			bt.tabCancel()
-		}
-		bt.tabCtx = nil
-		bt.tabCancel = nil
-	}
-	m.mu.Unlock()
+// newTab creates a fresh chromedp tab context under the given allocator.
+func newTab(allocCtx context.Context) (context.Context, context.CancelFunc) {
+	return chromedp.NewContext(allocCtx)
 }
 
-// CloseBrowser tears down all chromedp resources for envID.
+// CloseTab tears down a specific tab by its internal tab ID.
+// If the tab is the active one, the most recent remaining tab becomes active.
+// Returns an error if the tab doesn't exist.
+func (m *Manager) CloseTab(envID, tabID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	bt := m.browsers[envID]
+	if bt == nil {
+		return fmt.Errorf("no browser for env %q", envID)
+	}
+	// Close a non-active tab.
+	if tt, ok := bt.tabs[tabID]; ok {
+		if cancel := bt.tabCancels[tabID]; cancel != nil {
+			cancel()
+		}
+		_ = tt // prevent unused
+		delete(bt.tabs, tabID)
+		delete(bt.tabCancels, tabID)
+		return nil
+	}
+	if tabID != "" && tabID != activeTabSentinel {
+		return fmt.Errorf("tab %q not found", tabID)
+	}
+	// Close the active tab.
+	if bt.tabCancel != nil {
+		bt.tabCancel()
+	}
+	bt.tabCtx = nil
+	bt.tabCancel = nil
+	return nil
+}
+
+const activeTabSentinel = "__active__"
+
+// closeActiveTab closes the active tab without error checking.
+func (m *Manager) closeActiveTab(bt *browserTab) {
+	if bt.tabCancel != nil {
+		bt.tabCancel()
+	}
+	bt.tabCtx = nil
+	bt.tabCancel = nil
+}
+
+// newTabID generates a unique internal tab ID.
+func (bt *browserTab) newTabID() string {
+	id := bt.nextTabID
+	bt.nextTabID++
+	return fmt.Sprintf("tab-%d", id)
+}
+
+// NewTab creates a new blank tab in the browser environment.
+// The new tab becomes the active tab. The previous active tab is
+// saved as a background tab. Returns the new tab's internal ID.
+func (m *Manager) NewTab(envID string) (string, error) {
+	bt, err := m.ensureBrowser(envID)
+	if err != nil {
+		return "", err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Save current active tab as a background tab.
+	if bt.tabCtx != nil {
+		oldID := bt.newTabID()
+		bt.tabs[oldID] = bt.tabCtx
+		bt.tabCancels[oldID] = bt.tabCancel
+	}
+
+	// Create a new tab as the active one.
+	bt.tabCtx, bt.tabCancel = newTab(bt.allocCtx)
+	newID := bt.newTabID()
+	return newID, nil
+}
+
+// tabInfo holds metadata about an open tab.
+type tabInfo struct {
+	TabID string `json:"tabId"`
+	Title string `json:"title"`
+	URL   string `json:"url"`
+	IsActive bool `json:"isActive"`
+}
+
+// ListTabs returns information about all open tabs in the browser environment.
+func (m *Manager) ListTabs(envID string) ([]tabInfo, error) {
+	bt, err := m.ensureBrowser(envID)
+	if err != nil {
+		return nil, err
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var result []tabInfo
+
+	// Collect active tab info.
+	if bt.tabCtx != nil {
+		var title, url string
+		// Best-effort fetch — don't fail if tab is navigating.
+		_ = chromedp.Run(bt.tabCtx,
+			chromedp.Title(&title),
+			chromedp.Location(&url),
+		)
+		result = append(result, tabInfo{
+			TabID:    activeTabSentinel,
+			Title:    title,
+			URL:      url,
+			IsActive: true,
+		})
+	}
+
+	// Collect background tab infos.
+	for id, ctx := range bt.tabs {
+		var title, url string
+		_ = chromedp.Run(ctx,
+			chromedp.Title(&title),
+			chromedp.Location(&url),
+		)
+		result = append(result, tabInfo{
+			TabID:    id,
+			Title:    title,
+			URL:      url,
+			IsActive: false,
+		})
+	}
+
+	return result, nil
+}
+
+// GetCookies returns cookies for the active tab (or all cookies if url is empty).
+func (m *Manager) GetCookies(envID string, urls []string) (json.RawMessage, error) {
+	tabCtx, err := m.ensureTab(envID)
+	if err != nil {
+		return nil, err
+	}
+	var result json.RawMessage
+	err = chromedp.Run(tabCtx,
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			cmd := network.GetCookies()
+			if len(urls) > 0 {
+				cmd = cmd.WithURLs(urls)
+			}
+			cookies, fetchErr := cmd.Do(ctx)
+			if fetchErr != nil {
+				return fetchErr
+			}
+			b, err := json.Marshal(cookies)
+			if err != nil {
+				return err
+			}
+			result = json.RawMessage(b)
+			return nil
+		}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get cookies: %w", err)
+	}
+	return result, nil
+}
+
+// SetCookies sets one or more cookies on the active tab.
+func (m *Manager) SetCookies(envID string, cookieList []map[string]any) error {
+	tabCtx, err := m.ensureTab(envID)
+	if err != nil {
+		return err
+	}
+	return chromedp.Run(tabCtx,
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			for _, c := range cookieList {
+				name, _ := c["name"].(string)
+				value, _ := c["value"].(string)
+				if name == "" {
+					continue
+				}
+				cmd := network.SetCookie(name, value)
+				if url, ok := c["url"].(string); ok {
+					cmd = cmd.WithURL(url)
+				}
+				if domain, ok := c["domain"].(string); ok {
+					cmd = cmd.WithDomain(domain)
+				}
+				if path, ok := c["path"].(string); ok {
+					cmd = cmd.WithPath(path)
+				}
+				if secure, ok := c["secure"].(bool); ok && secure {
+					cmd = cmd.WithSecure(true)
+				}
+				if httpOnly, ok := c["httpOnly"].(bool); ok && httpOnly {
+					cmd = cmd.WithHTTPOnly(true)
+				}
+				if err := cmd.Do(ctx); err != nil {
+					return err
+				}
+			}
+			return nil
+		}),
+	)
+}
+
+// CloseBrowser tears down all chromedp resources for envID, including all tabs.
 func (m *Manager) CloseBrowser(envID string) {
 	m.mu.Lock()
 	bt := m.browsers[envID]
 	if bt != nil {
-		if bt.tabCancel != nil {
-			bt.tabCancel()
-		}
+		m.closeAllTabsLocked(bt)
 		if bt.allocCancel != nil {
 			bt.allocCancel()
 		}
@@ -121,22 +314,34 @@ func (m *Manager) CloseBrowser(envID string) {
 	}
 	delete(m.debugPorts, envID)
 	m.mu.Unlock()
-
-	// Also close any pooled CDP WebSocket connection.
 	RemoveCDPConn(envID)
+}
+
+// closeAllTabsLocked closes all tabs (active + background). Caller must hold m.mu.
+func (m *Manager) closeAllTabsLocked(bt *browserTab) {
+	if bt.tabCancel != nil {
+		bt.tabCancel()
+		bt.tabCtx = nil
+		bt.tabCancel = nil
+	}
+	for _, cancel := range bt.tabCancels {
+		if cancel != nil {
+			cancel()
+		}
+	}
+	bt.tabs = make(map[string]context.Context)
+	bt.tabCancels = make(map[string]context.CancelFunc)
 }
 
 // ResetEnv tears down chromedp resources for envID when the browser is
 // being re-opened (e.g. browser_open after a prior close or crash).
 // Unlike CloseBrowser this does NOT close CDP conns — the new browser
-// will get a fresh WebSocket. It only tears down the allocator/tab.
+// will get a fresh WebSocket. It tears down allocator + all tabs.
 func (m *Manager) ResetEnv(envID string) {
 	m.mu.Lock()
 	bt := m.browsers[envID]
 	if bt != nil {
-		if bt.tabCancel != nil {
-			bt.tabCancel()
-		}
+		m.closeAllTabsLocked(bt)
 		if bt.allocCancel != nil {
 			bt.allocCancel()
 		}
@@ -145,13 +350,11 @@ func (m *Manager) ResetEnv(envID string) {
 	m.mu.Unlock()
 }
 
-// CloseAllBrowsers shuts down all chromedp connections.
+// CloseAllBrowsers shuts down all chromedp connections across all envs.
 func (m *Manager) CloseAllBrowsers() {
 	m.mu.Lock()
 	for envID, bt := range m.browsers {
-		if bt.tabCancel != nil {
-			bt.tabCancel()
-		}
+		m.closeAllTabsLocked(bt)
 		if bt.allocCancel != nil {
 			bt.allocCancel()
 		}
@@ -1023,6 +1226,22 @@ func (m *Manager) GetValue(envID, sessionID, selector string) (string, error) {
 	return value, nil
 }
 
+// GetHTML returns the full HTML source of the current page.
+func (m *Manager) GetHTML(envID, sessionID string) (string, error) {
+	tabCtx, err := m.ensureTab(envID)
+	if err != nil {
+		return "", err
+	}
+	var html string
+	err = chromedp.Run(tabCtx,
+		chromedp.Evaluate(`document.documentElement.outerHTML`, &html),
+	)
+	if err != nil {
+		return "", fmt.Errorf("get html: %w", err)
+	}
+	return html, nil
+}
+
 // UncheckRef unchecks a checkbox or radio button identified by a
 // snapshot backendDOMNodeId reference.
 func (m *Manager) UncheckRef(envID, sessionID, ref string) error {
@@ -1201,6 +1420,49 @@ func (m *Manager) Wait(envID, text, role, name, selector string, timeoutMs int) 
 	}
 
 	return fmt.Errorf("wait timed out after %dms", timeoutMs)
+}
+
+// WaitForNavigation polls until the active tab's readyState is "complete".
+func (m *Manager) WaitForNavigation(envID string, timeoutMs int) error {
+	if timeoutMs <= 0 {
+		timeoutMs = 30000
+	}
+	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
+	for time.Now().Before(deadline) {
+		ps, err := m.PageState(envID)
+		if err == nil && ps != nil && ps.ReadyState == "complete" {
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return fmt.Errorf("WaitForNavigation timed out after %dms", timeoutMs)
+}
+
+// WaitForSelector polls until at least one element matching selector exists.
+func (m *Manager) WaitForSelector(envID, selector string, timeoutMs int) error {
+	if selector == "" {
+		return fmt.Errorf("selector is required")
+	}
+	if timeoutMs <= 0 {
+		timeoutMs = 5000
+	}
+	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
+	for time.Now().Before(deadline) {
+		tabCtx, err := m.ensureTab(envID)
+		if err == nil {
+			var nodeIDs []cdp.NodeID
+			err := chromedp.Run(tabCtx,
+				chromedp.ActionFunc(func(ctx context.Context) error {
+					return chromedp.NodeIDs(selector, &nodeIDs, chromedp.ByQuery).Do(ctx)
+				}),
+			)
+			if err == nil && len(nodeIDs) > 0 {
+				return nil
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return fmt.Errorf("WaitForSelector(%q) timed out after %dms", selector, timeoutMs)
 }
 
 // DialogResult holds the result of a dialog interaction.

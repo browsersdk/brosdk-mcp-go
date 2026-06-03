@@ -13,11 +13,11 @@ so AI Agents (Claude, CodeBuddy, etc.) can directly control fingerprint browser 
 |----------|---------|-------------|
 | **README.md** (this file) | Project overview, API reference, config, usage | First time |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, tech stack, design decisions | Understanding internals / contributing |
-| [docs/tools-reference.md](docs/tools-reference.md) | Full 65-tool API reference | Looking up specific tool params/returns |
+| [docs/tools-reference.md](docs/tools-reference.md) | Full 72-tool API reference | Looking up specific tool params/returns |
 
 ## Feature Overview
 
-- Expose all BroSDK capabilities through 65 MCP Tools: SDK lifecycle, browser control, high-level browser actions, environment CRUD, **browser record-replay**
+- Expose all BroSDK capabilities through 72 MCP Tools: SDK lifecycle, browser control, high-level browser actions, environment CRUD, **browser record-replay**
 - High-level browser operations powered by [chromedp](https://github.com/chromedp/chromedp) — click, type, fill, screenshot, PDF, no raw CDP required
 - Retain `browser_command` transparent CDP proxy for advanced/custom DevTools scenarios
 - Async tools deliver results via SSE events, with support for long-wait operations
@@ -147,7 +147,7 @@ Real-time progress is printed to console during download.
 | `/message`     | POST   | JSON-RPC 2.0 request endpoint       |
 | `/health`      | GET    | Health check (returns `200 OK`)     |
 
-## MCP Tools (66)
+## MCP Tools (72)
 
 ### SDK Info (3)
 
@@ -168,7 +168,7 @@ Real-time progress is printed to console during download.
 | `browser_select`   | Sync      | `envId` (required)                          | **Set active environment**; subsequent Browser Actions use it when `envId` is omitted |
 | `browser_command` | Sync      | `envId`, `method` (required), `params`, `sessionId` | Send raw CDP command to browser          |
 
-### Browser Actions (44)
+### Browser Actions (50)
 
 > **`envId` parameter**: Now **optional** for all Browser Actions.
 > Use `browser_select` to set the active environment; subsequent actions can omit `envId`.
@@ -182,7 +182,28 @@ Real-time progress is printed to console during download.
 | `browser_reload`  | `envId` (required), `sessionId`               | Reload the current page                           |
 | `browser_back`    | `envId` (required), `sessionId`               | Navigate back in browser history                  |
 | `browser_forward` | `envId` (required), `sessionId`               | Navigate forward in browser history               |
-| `browser_snapshot`| `envId` (required), `sessionId`              | Capture accessibility tree with `backendDOMNodeId` refs |
+| `browser_snapshot`| `envId`, `sessionId`              | Capture accessibility tree with `backendDOMNodeId` refs |
+
+#### Tab Management
+
+| Tool                 | Parameters                                   | Description                                      |
+|----------------------|----------------------------------------------|--------------------------------------------------|
+| `browser_new_tab`    | `envId`                                      | Create a new blank tab; returns `{tabId}`. New tab becomes active. |
+| `browser_close_tab`  | `envId`, `tabId` (required)                  | Close a tab by ID (`"__active__"` for current active tab) |
+| `browser_list_tabs`  | `envId`                                      | List all open tabs: `[{tabId, title, url, isActive}]` |
+
+#### Page Content
+
+| Tool                 | Parameters                                   | Description                                      |
+|----------------------|----------------------------------------------|--------------------------------------------------|
+| `browser_get_html`   | `envId`                                      | Return full HTML source of the current page      |
+
+#### Cookie Management
+
+| Tool                    | Parameters                                   | Description                                      |
+|-------------------------|----------------------------------------------|--------------------------------------------------|
+| `browser_get_cookies`   | `envId`, `urls`                              | Get cookies for current tab; optionally filter by URL |
+| `browser_set_cookies`   | `envId`, `cookies` (required)                | Set cookies; each supports `{name, value, url, domain, path, secure, httpOnly}` |
 
 #### Mouse Actions
 
@@ -250,12 +271,12 @@ Real-time progress is printed to console during download.
 
 | Tool                    | Parameters                                       | Description                               |
 |-------------------------|--------------------------------------------------|-------------------------------------------|
-| `browser_find_ref`      | `envId` (required), `role`, `name`, `value`, `limit` | Search AX tree for elements and return refs (80% smaller than full snapshot) |
-| `browser_wait`          | `envId` (required), `text`, `role`, `name`, `selector`, `timeout` | Poll for element every 200ms until found; replaces blind sleep |
-| `browser_page_state`    | `envId` (required), `sessionId`                   | Return `{readyState, title, url}` to check page load state |
-| `browser_exists`        | `envId` (required), `role`, `name`, `value`, `selector`, `sessionId` | Quick boolean check if element exists |
-| `browser_dialog`        | `envId` (required), `action`, `promptText`, `sessionId` | Read/accept/dismiss dialogs (alert/confirm/prompt) |
-| `browser_fill_form`     | `envId` (required), `fields` (required), `submitSelector` | Batch fill form fields in one call instead of multiple fill/type |
+| `browser_find_ref`      | `envId`, `role`, `name`, `value`, `limit` | Search AX tree for elements and return refs (80% smaller than full snapshot) |
+| `browser_wait`          | `envId`, `text`, `role`, `name`, `selector`, `timeout`, `waitFor`, `delay` | Wait for a condition; `waitFor` supports `navigation` (readyState), `selector` (CSS appeared), `text` (text visible), `time` (fixed ms) |
+| `browser_page_state`    | `envId`, `sessionId`                   | Return `{readyState, title, url}` to check page load state |
+| `browser_exists`        | `envId`, `role`, `name`, `value`, `selector`, `sessionId` | Quick boolean check if element exists |
+| `browser_dialog`        | `envId`, `action`, `promptText`, `sessionId` | Read/accept/dismiss dialogs (alert/confirm/prompt) |
+| `browser_fill_form`     | `envId`, `fields` (required), `submitSelector` | Batch fill form fields in one call instead of multiple fill/type |
 
 ### Environment Management (5)
 
@@ -437,6 +458,7 @@ Test files are split into 8 files by feature area for easy focused runs:
 | `e2e_mouse_test.go` | `TestE2E_MouseInteraction` | dblclick/hover/hover_ref/find_click_text |
 | `e2e_scroll_test.go` | `TestE2E_ScrollAndScreenshot` | scroll/scroll_into_view/screenshot/PDF |
 | `e2e_drag_test.go` | `TestE2E_DragAndUpload` | drag/upload_file |
+| `e2e_tab_test.go` | `TestE2E_TabManagement` | new_tab/list_tabs/close_tab/get_html |
 | `e2e_agent_test.go` | `TestE2E_AgentFriendlyTools` | 7 agent-friendly tools (find_ref, wait, page_state, exists, dialog, fill_form, snapshot:interactiveOnly) |
 | `e2e_record_test.go` | `TestE2E_RecordReplay_FullFlow` | record_start → ops → record_stop → scene_replay |
 | | `TestE2E_RecordReplay_VariableSubstitution` | Variable substitution: `{{username}}`/`{{password}}` |
@@ -452,7 +474,7 @@ go test -v -run TestE2E_KeyboardInteraction -timeout 300s .
 go test -v -run TestE2E_SnapshotClickRef -timeout 300s .
 ```
 
-64 out of 65 MCP tools covered (98%); only `browser_install` (async, long-running) is not covered. 53 tests total (13 agent-friendly + 40 recorder unit).
+72 of 72 MCP tools covered; only `browser_install` (async, long-running) is not covered.
 
 ## Project Layout
 
@@ -464,7 +486,7 @@ brosdk-mcp-go/
 ├── README_EN.md
 ├── docs/
 │   ├── ARCHITECTURE.md             # Architecture & design decisions
-│   └── tools-reference.md          # 65 MCP Tool API reference
+│   └── tools-reference.md          # 72 MCP Tool API reference
 ├── e2e_test.go                    # E2E shared infrastructure (types, fixture, helpers)
 ├── e2e_basic_test.go              # E2E: SDK basics + CDP form tests
 ├── e2e_snapshot_test.go           # E2E: snapshot + click_ref workflow
@@ -475,6 +497,7 @@ brosdk-mcp-go/
 ├── e2e_drag_test.go               # E2E: drag + file upload
 ├── e2e_agent_test.go              # E2E: agent-friendly tools
 ├── e2e_record_test.go             # E2E: record-replay full flow
+├── e2e_tab_test.go                # E2E: tab management + get_html
 ├── libs/
 │   ├── brosdk.h                   # C header (reference)
 │   ├── windows-x64/
@@ -502,7 +525,7 @@ brosdk-mcp-go/
     │   ├── server.go              # MCP SSE server (JSON-RPC 2.0 + broadcast)
     │   └── inspector.go           # Built-in MCP Inspector Web UI
     └── tools/
-        └── tools.go               # 65 tool definitions + handler dispatch + Recorder hook
+        └── tools.go               # 72 tool definitions + handler dispatch + Recorder hook
     └── recorder/
         ├── recorder.go            # Record singleton (start/stop/capture/sanitize)
         ├── player.go              # Replay engine (step execution + variable substitution)

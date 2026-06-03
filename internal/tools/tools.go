@@ -107,7 +107,7 @@ func All() []mcp.ToolDef {
 			Description: "Open a URL in a new page tab. Creates a new target, attaches to it, and stores the session for subsequent actions. Returns {targetId, sessionId}.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","url"],
+				"required":["url"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"url":{"type":"string","description":"URL to navigate to"}
@@ -119,7 +119,7 @@ func All() []mcp.ToolDef {
 			Description: "Capture the accessibility tree of the current page. Set interactiveOnly=true to return only interactive elements (buttons, inputs, links, etc.) — much smaller response for LLM agents.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId"],
+				"required":[],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"},
@@ -132,7 +132,7 @@ func All() []mcp.ToolDef {
 			Description: "Click an element matching a CSS selector. Scrolls the element into view, focuses it, then clicks.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","selector"],
+				"required":["selector"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the element"},
@@ -145,7 +145,7 @@ func All() []mcp.ToolDef {
 			Description: "Click an element by its accessibility ref (backendNodeId from browser_snapshot).",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","ref"],
+				"required":["ref"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"ref":{"type":"string","description":"Accessibility backendNodeId from snapshot"},
@@ -158,7 +158,7 @@ func All() []mcp.ToolDef {
 			Description: "Double-click an element matching a CSS selector.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","selector"],
+				"required":["selector"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the element"},
@@ -171,7 +171,7 @@ func All() []mcp.ToolDef {
 			Description: "Focus an element matching a CSS selector.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","selector"],
+				"required":["selector"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the element"},
@@ -184,7 +184,7 @@ func All() []mcp.ToolDef {
 			Description: "Focus an element by its accessibility ref (backendNodeId from browser_snapshot).",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","ref"],
+				"required":["ref"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"ref":{"type":"string","description":"Accessibility backendNodeId from snapshot"},
@@ -197,7 +197,7 @@ func All() []mcp.ToolDef {
 			Description: "Type text into an element matching a CSS selector (appends to existing value, fires input/change events).",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","selector","text"],
+				"required":["selector","text"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the input element"},
@@ -211,7 +211,7 @@ func All() []mcp.ToolDef {
 			Description: "Type text into an element identified by its accessibility ref (backendNodeId from browser_snapshot).",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","ref","text"],
+				"required":["ref","text"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"ref":{"type":"string","description":"Accessibility backendNodeId from snapshot"},
@@ -225,7 +225,7 @@ func All() []mcp.ToolDef {
 			Description: "Clear an input field and type new text (fires input + change events).",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","selector","text"],
+				"required":["selector","text"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the input element"},
@@ -239,7 +239,7 @@ func All() []mcp.ToolDef {
 			Description: "Clear an input field (identified by ref) and type new text. Ref is the backendNodeId from browser_snapshot.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","ref","text"],
+				"required":["ref","text"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"ref":{"type":"string","description":"Accessibility backendNodeId from snapshot"},
@@ -253,7 +253,7 @@ func All() []mcp.ToolDef {
 			Description: "Find visible text on the page (XPath contains) and click the containing element.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","text"],
+				"required":["text"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"text":{"type":"string","description":"Text to search for on the page"},
@@ -266,7 +266,7 @@ func All() []mcp.ToolDef {
 			Description: "Press a key (keyDown + keyUp). Use this for special keys like 'Enter', 'Escape', 'Tab', 'ArrowDown', etc.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","key"],
+				"required":["key"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"key":{"type":"string","description":"Key name, e.g. 'Enter', 'Escape', 'Tab', 'ArrowDown'"},
@@ -279,7 +279,7 @@ func All() []mcp.ToolDef {
 			Description: "Dispatch char-level key events for each character (use when a focused element needs character-by-character input).",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","text"],
+				"required":["text"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"text":{"type":"string","description":"Text to type character by character"},
@@ -292,7 +292,7 @@ func All() []mcp.ToolDef {
 			Description: "Insert text via Input.insertText (preferred for text input into a focused field).",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","text"],
+				"required":["text"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"text":{"type":"string","description":"Text to insert"},
@@ -305,7 +305,7 @@ func All() []mcp.ToolDef {
 			Description: "Send a keyDown event for a specific key. Pair with browser_key_up for modifiers.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","key"],
+				"required":["key"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"key":{"type":"string","description":"Key name, e.g. 'Shift', 'Control', 'Alt', 'a'"},
@@ -318,7 +318,7 @@ func All() []mcp.ToolDef {
 			Description: "Send a keyUp event for a specific key.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","key"],
+				"required":["key"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"key":{"type":"string","description":"Key name"},
@@ -331,7 +331,7 @@ func All() []mcp.ToolDef {
 			Description: "Execute a JavaScript expression in the current page and return the result as JSON. Useful for reading page state after interactions.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","expression"],
+				"required":["expression"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"expression":{"type":"string","description":"JavaScript expression, e.g. 'document.title' or 'document.querySelector(\"#status\").textContent'"},
@@ -344,7 +344,7 @@ func All() []mcp.ToolDef {
 			Description: "Hover over an element matching a CSS selector (dispatches mouseover + mouseenter).",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","selector"],
+				"required":["selector"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the element"},
@@ -357,7 +357,7 @@ func All() []mcp.ToolDef {
 			Description: "Hover over an element by its accessibility ref (backendNodeId from browser_snapshot).",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","ref"],
+				"required":["ref"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"ref":{"type":"string","description":"Accessibility backendNodeId from snapshot"},
@@ -370,7 +370,7 @@ func All() []mcp.ToolDef {
 			Description: "Set the value of a <select> element and fire change event.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","selector","value"],
+				"required":["selector","value"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the <select> element"},
@@ -384,7 +384,7 @@ func All() []mcp.ToolDef {
 			Description: "Set the value of a <select> element by its accessibility ref (backendNodeId from browser_snapshot).",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","ref","value"],
+				"required":["ref","value"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"ref":{"type":"string","description":"Accessibility backendNodeId from snapshot"},
@@ -398,7 +398,7 @@ func All() []mcp.ToolDef {
 			Description: "Check a checkbox or radio input (sets checked=true and fires change event).",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","selector"],
+				"required":["selector"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the checkbox/radio"},
@@ -411,7 +411,7 @@ func All() []mcp.ToolDef {
 			Description: "Check a checkbox/radio by its accessibility ref (backendNodeId from browser_snapshot). Reads .checked status first and clicks only if unchecked.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","ref"],
+				"required":["ref"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"ref":{"type":"string","description":"Accessibility backendNodeId from snapshot"},
@@ -424,7 +424,7 @@ func All() []mcp.ToolDef {
 			Description: "Uncheck a checkbox (sets checked=false and fires change event).",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","selector"],
+				"required":["selector"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the checkbox"},
@@ -437,7 +437,7 @@ func All() []mcp.ToolDef {
 			Description: "Scroll the page or a specific element. direction: 'up'|'down'|'left'|'right'. px defaults to 300 if omitted.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","direction"],
+				"required":["direction"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"direction":{"type":"string","description":"Scroll direction: up, down, left, right"},
@@ -452,7 +452,7 @@ func All() []mcp.ToolDef {
 			Description: "Scroll an element into view (aligns to center).",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","selector"],
+				"required":["selector"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the element"},
@@ -465,7 +465,7 @@ func All() []mcp.ToolDef {
 			Description: "Drag a source element onto a target element (simulates dragstart → dragover → drop → dragend).",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","sourceSelector","targetSelector"],
+				"required":["sourceSelector","targetSelector"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"sourceSelector":{"type":"string","description":"CSS selector for the draggable source element"},
@@ -479,7 +479,7 @@ func All() []mcp.ToolDef {
 			Description: "Set files on a file input element (DOM.setFileInputFiles). Paths are resolved to absolute paths.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","selector","files"],
+				"required":["selector","files"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector for the file input element"},
@@ -493,7 +493,7 @@ func All() []mcp.ToolDef {
 			Description: "Take a screenshot of the current page. Saves to workDir/screenshots/ (auto-created). Returns absolute path for agent reading.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId"],
+				"required":[],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"path":{"type":"string","description":"Output file path (auto-generated under workDir/screenshots/ if omitted)"},
@@ -511,7 +511,7 @@ func All() []mcp.ToolDef {
 			Description: "Generate a PDF of the current page. Saves to workDir/pdfs/ (auto-created). Returns absolute path for agent reading.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId"],
+				"required":[],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"path":{"type":"string","description":"Output PDF file path (default: workDir/pdfs/output.pdf)"},
@@ -524,7 +524,7 @@ func All() []mcp.ToolDef {
 			Description: "Reload the current page.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId"],
+				"required":[],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
@@ -536,7 +536,7 @@ func All() []mcp.ToolDef {
 			Description: "Navigate back in browser history.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId"],
+				"required":[],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
@@ -548,7 +548,7 @@ func All() []mcp.ToolDef {
 			Description: "Navigate forward in browser history.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId"],
+				"required":[],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
@@ -560,7 +560,7 @@ func All() []mcp.ToolDef {
 			Description: "Return the visible text content of an element matched by a CSS selector.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","selector"],
+				"required":["selector"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector to locate the element"},
@@ -573,7 +573,7 @@ func All() []mcp.ToolDef {
 			Description: "Return the value attribute of an input element matched by a CSS selector.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","selector"],
+				"required":["selector"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"selector":{"type":"string","description":"CSS selector to locate the input element"},
@@ -586,11 +586,80 @@ func All() []mcp.ToolDef {
 			Description: "Uncheck a checkbox or radio button identified by a snapshot backendDOMNodeId reference (see browser_snapshot).",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","ref"],
+				"required":["ref"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"ref":{"type":"string","description":"BackendDOMNodeId from browser_snapshot response"},
 					"sessionId":{"type":"string","description":"CDP session ID (optional; uses active session if omitted)"}
+				}
+			}`),
+		},
+		{
+			Name:        "browser_get_html",
+			Description: "Return the full HTML source of the current page. Use this when browser_snapshot doesn't capture content you need (e.g. raw data attributes, comments, inline scripts). The output can be very large — prefer browser_snapshot or browser_get_text for element-level queries.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":[],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"}
+				}
+			}`),
+		},
+		{
+			Name:        "browser_new_tab",
+			Description: "Create a new blank tab in the active browser environment. The new tab becomes the active tab. The previous active tab is kept open in the background. Returns {tabId} for later reference.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":[],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"}
+				}
+			}`),
+		},
+		{
+			Name:        "browser_close_tab",
+			Description: "Close a specific tab by its tabId. If you close the active tab, the most recent remaining tab becomes active. Use browser_list_tabs to find tab IDs.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["tabId"],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"},
+					"tabId":{"type":"string","description":"Tab ID from browser_list_tabs or browser_new_tab (use \"__active__\" for the currently active tab)"}
+				}
+			}`),
+		},
+		{
+			Name:        "browser_list_tabs",
+			Description: "List all open tabs in the active browser environment. Returns [{tabId, title, url, isActive}]. The active tab has tabId=\"__active__\".",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":[],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"}
+				}
+			}`),
+		},
+		{
+			Name:        "browser_get_cookies",
+			Description: "Get cookies from the current page. If urls are provided, returns cookies for those URLs only. Otherwise returns all cookies in the browser. Returns an array of cookie objects.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":[],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"},
+					"urls":{"type":"array","items":{"type":"string"},"description":"URLs to filter cookies by (optional; returns all cookies if omitted)"}
+				}
+			}`),
+		},
+		{
+			Name:        "browser_set_cookies",
+			Description: "Set one or more cookies in the browser. Each cookie object requires 'name' and 'value', and optionally 'url', 'domain', 'path', 'secure', 'httpOnly'.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["cookies"],
+				"properties":{
+					"envId":{"type":"string","description":"Target environment ID"},
+					"cookies":{"type":"array","items":{"type":"object"},"description":"Array of cookie objects e.g. [{\"name\":\"session\",\"value\":\"abc123\",\"url\":\"https://example.com\"}]"}
 				}
 			}`),
 		},
@@ -601,7 +670,7 @@ func All() []mcp.ToolDef {
 			Description: "Search the accessibility tree for elements matching role/name/value and return their refs. Much cheaper than parsing the full browser_snapshot output. All filter fields are optional — omit to match all, provide multiple to narrow results.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId"],
+				"required":[],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"role":{"type":"string","description":"ARIA role to match, e.g. 'button', 'textbox', 'link' (optional)"},
@@ -613,17 +682,19 @@ func All() []mcp.ToolDef {
 		},
 		{
 			Name:        "browser_wait",
-			Description: "Wait for an element to appear on the page. Polls the accessibility tree at 200ms intervals until the element is found or timeout is reached. Provide at least one of: text (substring match on name/value), role+name (exact match), or selector (CSS).",
+			Description: "Wait for a condition on the page. Supports multiple wait modes via the 'waitFor' parameter: 'navigation' (page load complete), 'selector' (CSS selector appears), 'text' (text substring appears in accessibility tree), 'time' (fixed delay). For backward compatibility, if waitFor is omitted, it auto-detects from which params you provide (text/role+name → 'text' mode; selector → 'selector' mode).",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId"],
+				"required":[],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
-					"text":{"type":"string","description":"Text substring to wait for (case-insensitive, matched against name and value)"},
-					"role":{"type":"string","description":"ARIA role (paired with name)"},
-					"name":{"type":"string","description":"Accessible name (paired with role)"},
-					"selector":{"type":"string","description":"CSS selector to wait for"},
-					"timeout":{"type":"integer","description":"Timeout in ms (default 5000)"}
+					"waitFor":{"type":"string","description":"Wait mode: 'navigation', 'selector', 'text', or 'time'. Auto-detected if omitted."},
+					"text":{"type":"string","description":"Text substring to wait for (used with waitFor=text or auto-detect)"},
+					"role":{"type":"string","description":"ARIA role (paired with name, used with waitFor=text)"},
+					"name":{"type":"string","description":"Accessible name (paired with role, used with waitFor=text)"},
+					"selector":{"type":"string","description":"CSS selector to wait for (used with waitFor=selector or auto-detect)"},
+					"timeout":{"type":"integer","description":"Timeout in ms (default 5000 for text/selector, 30000 for navigation)"},
+					"delay":{"type":"integer","description":"Fixed delay in ms (used with waitFor=time)"}
 				}
 			}`),
 		},
@@ -632,7 +703,7 @@ func All() []mcp.ToolDef {
 			Description: "Quick page check: returns {title, url, readyState}. Use instead of browser_evaluate for common page metadata queries.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId"],
+				"required":[],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"}
 				}
@@ -643,7 +714,7 @@ func All() []mcp.ToolDef {
 			Description: "Quick boolean check whether an element (by role and name) exists on the current page. Returns {exists: true/false}. Faster and cheaper than parsing the full snapshot.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","role","name"],
+				"required":["role","name"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"role":{"type":"string","description":"ARIA role, e.g. 'button', 'dialog'"},
@@ -657,7 +728,7 @@ func All() []mcp.ToolDef {
 			Description: "Handle a JavaScript dialog (alert/confirm/prompt). Use 'accept' to dismiss with OK, 'dismiss' to cancel.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","action"],
+				"required":["action"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"action":{"type":"string","description":"'accept' (click OK) or 'dismiss' (click Cancel)"}
@@ -669,7 +740,7 @@ func All() []mcp.ToolDef {
 			Description: "Fill multiple form fields at once. Accepts a map of CSS selectors to values. If submitSelector is provided, clicks it after filling all fields. Much more efficient than calling browser_fill/browser_type multiple times.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","fields"],
+				"required":["fields"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
 					"fields":{"type":"object","description":"Map of CSS selectors to values, e.g. {\"#name\": \"John\", \"#email\": \"john@test.com\"}"},
@@ -1179,9 +1250,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_key_down":
-		envID, key := str(p, "envId"), str(p, "key")
+		envID, key := resolveEnvID(mgr, p), str(p, "key")
 		if envID == "" || key == "" {
-			return "", fmt.Errorf("envId and key are required")
+			return "", fmt.Errorf("envId (or browser_select) and key are required")
 		}
 		if err := mgr.KeyDown(envID, str(p, "sessionId"), key); err != nil {
 			return "", err
@@ -1189,9 +1260,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_key_up":
-		envID, key := str(p, "envId"), str(p, "key")
+		envID, key := resolveEnvID(mgr, p), str(p, "key")
 		if envID == "" || key == "" {
-			return "", fmt.Errorf("envId and key are required")
+			return "", fmt.Errorf("envId (or browser_select) and key are required")
 		}
 		if err := mgr.KeyUp(envID, str(p, "sessionId"), key); err != nil {
 			return "", err
@@ -1199,9 +1270,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_hover":
-		envID, sel := str(p, "envId"), str(p, "selector")
+		envID, sel := resolveEnvID(mgr, p), str(p, "selector")
 		if envID == "" || sel == "" {
-			return "", fmt.Errorf("envId and selector are required")
+			return "", fmt.Errorf("envId (or browser_select) and selector are required")
 		}
 		if err := mgr.Hover(envID, str(p, "sessionId"), sel); err != nil {
 			return "", err
@@ -1209,9 +1280,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_hover_ref":
-		envID, ref := str(p, "envId"), str(p, "ref")
+		envID, ref := resolveEnvID(mgr, p), str(p, "ref")
 		if envID == "" || ref == "" {
-			return "", fmt.Errorf("envId and ref are required")
+			return "", fmt.Errorf("envId (or browser_select) and ref are required")
 		}
 		if err := mgr.HoverRef(envID, str(p, "sessionId"), ref); err != nil {
 			return "", err
@@ -1219,9 +1290,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_evaluate":
-		envID, expr := str(p, "envId"), str(p, "expression")
+		envID, expr := resolveEnvID(mgr, p), str(p, "expression")
 		if envID == "" || expr == "" {
-			return "", fmt.Errorf("envId and expression are required")
+			return "", fmt.Errorf("envId (or browser_select) and expression are required")
 		}
 		var result any
 		if err := mgr.Evaluate(envID, str(p, "sessionId"), expr, &result); err != nil {
@@ -1231,9 +1302,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return string(b), nil
 
 	case "browser_select_option":
-		envID, sel, val := str(p, "envId"), str(p, "selector"), str(p, "value")
+		envID, sel, val := resolveEnvID(mgr, p), str(p, "selector"), str(p, "value")
 		if envID == "" || sel == "" || val == "" {
-			return "", fmt.Errorf("envId, selector and value are required")
+			return "", fmt.Errorf("envId (or browser_select), selector and value are required")
 		}
 		if err := mgr.SelectOption(envID, str(p, "sessionId"), sel, val); err != nil {
 			return "", err
@@ -1241,9 +1312,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_select_option_ref":
-		envID, ref, val := str(p, "envId"), str(p, "ref"), str(p, "value")
+		envID, ref, val := resolveEnvID(mgr, p), str(p, "ref"), str(p, "value")
 		if envID == "" || ref == "" || val == "" {
-			return "", fmt.Errorf("envId, ref and value are required")
+			return "", fmt.Errorf("envId (or browser_select), ref and value are required")
 		}
 		if err := mgr.SelectOptionRef(envID, str(p, "sessionId"), ref, val); err != nil {
 			return "", err
@@ -1251,9 +1322,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_check":
-		envID, sel := str(p, "envId"), str(p, "selector")
+		envID, sel := resolveEnvID(mgr, p), str(p, "selector")
 		if envID == "" || sel == "" {
-			return "", fmt.Errorf("envId and selector are required")
+			return "", fmt.Errorf("envId (or browser_select) and selector are required")
 		}
 		if err := mgr.Check(envID, str(p, "sessionId"), sel); err != nil {
 			return "", err
@@ -1261,9 +1332,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_check_ref":
-		envID, ref := str(p, "envId"), str(p, "ref")
+		envID, ref := resolveEnvID(mgr, p), str(p, "ref")
 		if envID == "" || ref == "" {
-			return "", fmt.Errorf("envId and ref are required")
+			return "", fmt.Errorf("envId (or browser_select) and ref are required")
 		}
 		if err := mgr.CheckRef(envID, str(p, "sessionId"), ref); err != nil {
 			return "", err
@@ -1271,9 +1342,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_uncheck":
-		envID, sel := str(p, "envId"), str(p, "selector")
+		envID, sel := resolveEnvID(mgr, p), str(p, "selector")
 		if envID == "" || sel == "" {
-			return "", fmt.Errorf("envId and selector are required")
+			return "", fmt.Errorf("envId (or browser_select) and selector are required")
 		}
 		if err := mgr.Uncheck(envID, str(p, "sessionId"), sel); err != nil {
 			return "", err
@@ -1281,9 +1352,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_scroll":
-		envID, dir := str(p, "envId"), str(p, "direction")
+		envID, dir := resolveEnvID(mgr, p), str(p, "direction")
 		if envID == "" || dir == "" {
-			return "", fmt.Errorf("envId and direction are required")
+			return "", fmt.Errorf("envId (or browser_select) and direction are required")
 		}
 		px := 0
 		if v, ok := p["px"].(float64); ok {
@@ -1296,9 +1367,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_scroll_into_view":
-		envID, sel := str(p, "envId"), str(p, "selector")
+		envID, sel := resolveEnvID(mgr, p), str(p, "selector")
 		if envID == "" || sel == "" {
-			return "", fmt.Errorf("envId and selector are required")
+			return "", fmt.Errorf("envId (or browser_select) and selector are required")
 		}
 		if err := mgr.ScrollIntoView(envID, str(p, "sessionId"), sel); err != nil {
 			return "", err
@@ -1306,9 +1377,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_drag":
-		envID, src, tgt := str(p, "envId"), str(p, "sourceSelector"), str(p, "targetSelector")
+		envID, src, tgt := resolveEnvID(mgr, p), str(p, "sourceSelector"), str(p, "targetSelector")
 		if envID == "" || src == "" || tgt == "" {
-			return "", fmt.Errorf("envId, sourceSelector and targetSelector are required")
+			return "", fmt.Errorf("envId (or browser_select), sourceSelector and targetSelector are required")
 		}
 		if err := mgr.Drag(envID, str(p, "sessionId"), src, tgt); err != nil {
 			return "", err
@@ -1316,9 +1387,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_upload_file":
-		envID, sel, files := str(p, "envId"), str(p, "selector"), strSlice(p, "files")
+		envID, sel, files := resolveEnvID(mgr, p), str(p, "selector"), strSlice(p, "files")
 		if envID == "" || sel == "" || len(files) == 0 {
-			return "", fmt.Errorf("envId, selector and files are required")
+			return "", fmt.Errorf("envId (or browser_select), selector and files are required")
 		}
 		if err := mgr.UploadFile(envID, str(p, "sessionId"), sel, files); err != nil {
 			return "", err
@@ -1326,9 +1397,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_screenshot":
-		envID := str(p, "envId")
+		envID := resolveEnvID(mgr, p)
 		if envID == "" {
-			return "", fmt.Errorf("envId is required")
+			return "", fmt.Errorf("envId (or browser_select) is required")
 		}
 		opts := brosdk.ScreenshotOptions{
 			Path:     str(p, "path"),
@@ -1347,9 +1418,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return fmt.Sprintf(`{"path":%q}`, outPath), nil
 
 	case "browser_pdf":
-		envID := str(p, "envId")
+		envID := resolveEnvID(mgr, p)
 		if envID == "" {
-			return "", fmt.Errorf("envId is required")
+			return "", fmt.Errorf("envId (or browser_select) is required")
 		}
 		outPath, err := mgr.PDF(envID, str(p, "sessionId"), str(p, "path"))
 		if err != nil {
@@ -1358,9 +1429,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return fmt.Sprintf(`{"path":%q}`, outPath), nil
 
 	case "browser_reload":
-		envID := str(p, "envId")
+		envID := resolveEnvID(mgr, p)
 		if envID == "" {
-			return "", fmt.Errorf("envId is required")
+			return "", fmt.Errorf("envId (or browser_select) is required")
 		}
 		if err := mgr.Reload(envID, str(p, "sessionId")); err != nil {
 			return "", err
@@ -1368,9 +1439,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_back":
-		envID := str(p, "envId")
+		envID := resolveEnvID(mgr, p)
 		if envID == "" {
-			return "", fmt.Errorf("envId is required")
+			return "", fmt.Errorf("envId (or browser_select) is required")
 		}
 		if err := mgr.Back(envID, str(p, "sessionId")); err != nil {
 			return "", err
@@ -1378,9 +1449,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_forward":
-		envID := str(p, "envId")
+		envID := resolveEnvID(mgr, p)
 		if envID == "" {
-			return "", fmt.Errorf("envId is required")
+			return "", fmt.Errorf("envId (or browser_select) is required")
 		}
 		if err := mgr.Forward(envID, str(p, "sessionId")); err != nil {
 			return "", err
@@ -1388,9 +1459,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_get_text":
-		envID, sel := str(p, "envId"), str(p, "selector")
+		envID, sel := resolveEnvID(mgr, p), str(p, "selector")
 		if envID == "" || sel == "" {
-			return "", fmt.Errorf("envId and selector are required")
+			return "", fmt.Errorf("envId (or browser_select) and selector are required")
 		}
 		text, err := mgr.GetText(envID, str(p, "sessionId"), sel)
 		if err != nil {
@@ -1399,9 +1470,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return fmt.Sprintf(`{"text":%q}`, text), nil
 
 	case "browser_get_value":
-		envID, sel := str(p, "envId"), str(p, "selector")
+		envID, sel := resolveEnvID(mgr, p), str(p, "selector")
 		if envID == "" || sel == "" {
-			return "", fmt.Errorf("envId and selector are required")
+			return "", fmt.Errorf("envId (or browser_select) and selector are required")
 		}
 		value, err := mgr.GetValue(envID, str(p, "sessionId"), sel)
 		if err != nil {
@@ -1410,20 +1481,96 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return fmt.Sprintf(`{"value":%q}`, value), nil
 
 	case "browser_uncheck_ref":
-		envID, ref := str(p, "envId"), str(p, "ref")
+		envID, ref := resolveEnvID(mgr, p), str(p, "ref")
 		if envID == "" || ref == "" {
-			return "", fmt.Errorf("envId and ref are required")
+			return "", fmt.Errorf("envId (or browser_select) and ref are required")
 		}
 		if err := mgr.UncheckRef(envID, str(p, "sessionId"), ref); err != nil {
 			return "", err
 		}
 		return `{"ok":true}`, nil
 
+	// ── Tab & Cookie Management ──
+	case "browser_get_html":
+		envID := resolveEnvID(mgr, p)
+		if envID == "" {
+			return "", fmt.Errorf("envId (or browser_select) is required")
+		}
+		html, err := mgr.GetHTML(envID, str(p, "sessionId"))
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf(`{"html":%q}`, html), nil
+
+	case "browser_new_tab":
+		envID := resolveEnvID(mgr, p)
+		if envID == "" {
+			return "", fmt.Errorf("envId (or browser_select) is required")
+		}
+		tabID, err := mgr.NewTab(envID)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf(`{"tabId":%q}`, tabID), nil
+
+	case "browser_close_tab":
+		envID, tabID := resolveEnvID(mgr, p), str(p, "tabId")
+		if envID == "" || tabID == "" {
+			return "", fmt.Errorf("envId (or browser_select) and tabId are required")
+		}
+		if err := mgr.CloseTab(envID, tabID); err != nil {
+			return "", err
+		}
+		return `{"ok":true}`, nil
+
+	case "browser_list_tabs":
+		envID := resolveEnvID(mgr, p)
+		if envID == "" {
+			return "", fmt.Errorf("envId (or browser_select) is required")
+		}
+		tabs, err := mgr.ListTabs(envID)
+		if err != nil {
+			return "", err
+		}
+		b, _ := json.Marshal(map[string]any{"tabs": tabs, "count": len(tabs)})
+		return string(b), nil
+
+	case "browser_get_cookies":
+		envID := resolveEnvID(mgr, p)
+		if envID == "" {
+			return "", fmt.Errorf("envId (or browser_select) is required")
+		}
+		urls := strSlice(p, "urls")
+		cookies, err := mgr.GetCookies(envID, urls)
+		if err != nil {
+			return "", err
+		}
+		return string(cookies), nil
+
+	case "browser_set_cookies":
+		envID := resolveEnvID(mgr, p)
+		if envID == "" {
+			return "", fmt.Errorf("envId (or browser_select) is required")
+		}
+		if raw, ok := p["cookies"].([]interface{}); ok {
+			cl := make([]map[string]any, 0, len(raw))
+			for _, v := range raw {
+				if m, ok := v.(map[string]any); ok {
+					cl = append(cl, m)
+				}
+			}
+			if err := mgr.SetCookies(envID, cl); err != nil {
+				return "", err
+			}
+			return `{"ok":true}`, nil
+		}
+		return "", fmt.Errorf("cookies must be an array of cookie objects")
+
 	// ── Agent-Friendly Tools (Tier 1 & 2) ──
 	case "browser_find_ref":
-		envID := str(p, "envId")
+		envID := resolveEnvID(mgr, p)
 		if envID == "" {
-			return "", fmt.Errorf("envId is required")
+			return "", fmt.Errorf("envId (or browser_select) is required")
 		}
 		role := str(p, "role")
 		name := str(p, "name")
@@ -1440,27 +1587,70 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return string(b), nil
 
 	case "browser_wait":
-		envID := str(p, "envId")
+		envID := resolveEnvID(mgr, p)
 		if envID == "" {
-			return "", fmt.Errorf("envId is required")
+			return "", fmt.Errorf("envId (or browser_select) is required")
 		}
-		text := str(p, "text")
-		role := str(p, "role")
-		name := str(p, "name")
-		selector := str(p, "selector")
+		waitFor := str(p, "waitFor")
 		timeout := 5000
 		if v, ok := p["timeout"].(float64); ok && v > 0 {
 			timeout = int(v)
 		}
-		if err := mgr.Wait(envID, text, role, name, selector, timeout); err != nil {
-			return "", err
+		// Auto-detect mode from provided params (backward compat).
+		if waitFor == "" {
+			if str(p, "selector") != "" {
+				waitFor = "selector"
+			} else if str(p, "text") != "" || str(p, "role") != "" {
+				waitFor = "text"
+			} else if _, ok := p["delay"]; ok {
+				waitFor = "time"
+			}
+		}
+		switch waitFor {
+		case "navigation":
+			if timeout < 30000 {
+				timeout = 30000
+			}
+			if err := mgr.WaitForNavigation(envID, timeout); err != nil {
+				return "", err
+			}
+		case "selector":
+			sel := str(p, "selector")
+			if sel == "" {
+				return "", fmt.Errorf("selector is required for waitFor=selector")
+			}
+			if err := mgr.WaitForSelector(envID, sel, timeout); err != nil {
+				return "", err
+			}
+		case "text":
+			text := str(p, "text")
+			role := str(p, "role")
+			name := str(p, "name")
+			if err := mgr.Wait(envID, text, role, name, str(p, "selector"), timeout); err != nil {
+				return "", err
+			}
+		case "time":
+			delay := 500
+			if v, ok := p["delay"].(float64); ok && v > 0 {
+				delay = int(v)
+			}
+			time.Sleep(time.Duration(delay) * time.Millisecond)
+		default:
+			// Fallback: use the old Wait (backward compat).
+			text := str(p, "text")
+			role := str(p, "role")
+			name := str(p, "name")
+			selector := str(p, "selector")
+			if err := mgr.Wait(envID, text, role, name, selector, timeout); err != nil {
+				return "", err
+			}
 		}
 		return `{"waited":true}`, nil
 
 	case "browser_page_state":
-		envID := str(p, "envId")
+		envID := resolveEnvID(mgr, p)
 		if envID == "" {
-			return "", fmt.Errorf("envId is required")
+			return "", fmt.Errorf("envId (or browser_select) is required")
 		}
 		ps, err := mgr.PageState(envID)
 		if err != nil {
@@ -1470,9 +1660,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return string(b), nil
 
 	case "browser_exists":
-		envID, role, name := str(p, "envId"), str(p, "role"), str(p, "name")
+		envID, role, name := resolveEnvID(mgr, p), str(p, "role"), str(p, "name")
 		if envID == "" || role == "" || name == "" {
-			return "", fmt.Errorf("envId, role and name are required")
+			return "", fmt.Errorf("envId (or browser_select), role and name are required")
 		}
 		value := str(p, "value")
 		exists, err := mgr.Exists(envID, role, name, value)
@@ -1482,9 +1672,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return fmt.Sprintf(`{"exists":%v}`, exists), nil
 
 	case "browser_dialog":
-		envID, action := str(p, "envId"), str(p, "action")
+		envID, action := resolveEnvID(mgr, p), str(p, "action")
 		if envID == "" || action == "" {
-			return "", fmt.Errorf("envId and action are required")
+			return "", fmt.Errorf("envId (or browser_select) and action are required")
 		}
 		if action != "accept" && action != "dismiss" {
 			return "", fmt.Errorf("action must be 'accept' or 'dismiss'")
@@ -1497,9 +1687,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return string(b), nil
 
 	case "browser_fill_form":
-		envID := str(p, "envId")
+		envID := resolveEnvID(mgr, p)
 		if envID == "" {
-			return "", fmt.Errorf("envId is required")
+			return "", fmt.Errorf("envId (or browser_select) is required")
 		}
 		fieldsRaw, ok := p["fields"].(map[string]any)
 		if !ok || len(fieldsRaw) == 0 {
