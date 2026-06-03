@@ -133,6 +133,18 @@ func (m *Manager) CloseTab(envID, tabID string) error {
 	}
 	bt.tabCtx = nil
 	bt.tabCancel = nil
+
+	// Promote a background tab to become the new active tab.
+	if len(bt.tabs) > 0 {
+		for id, ctx := range bt.tabs {
+			bt.tabCtx = ctx
+			bt.tabCancel = bt.tabCancels[id]
+			delete(bt.tabs, id)
+			delete(bt.tabCancels, id)
+			break
+		}
+	}
+
 	return nil
 }
 
