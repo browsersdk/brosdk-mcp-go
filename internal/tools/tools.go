@@ -678,6 +678,17 @@ func All() []mcp.ToolDef {
 			}`),
 		},
 
+		{
+			Name:        "browser_select",
+			Description: "Set the active browser environment. All subsequent Browser Action tools will use this envId by default when their own envId parameter is omitted.",
+			InputSchema: schema(`{
+				"type":"object",
+				"required":["envId"],
+				"properties":{
+					"envId":{"type":"string","description":"Environment ID to activate"}
+				}
+			}`),
+		},
 		// ── Environment management ─────────────────────────────────────────────
 		{
 			Name:        "env_create",
@@ -817,10 +828,10 @@ func All() []mcp.ToolDef {
 			Description: "Replay a saved scene against a browser environment. Uses WaitFor guards (readyState/exists) to ensure each step completes before the next begins. Supports {{variable}} substitution in step params. Returns per-step results.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["name","envId"],
-				"properties":{
-					"name":{"type":"string","description":"Scene file name (without extension)"},
-					"envId":{"type":"string","description":"Target browser environment ID"},
+			"required":["name"],
+			"properties":{
+				"name":{"type":"string","description":"Scene file name (without extension)"},
+				"envId":{"type":"string","description":"Target browser environment ID. If omitted, uses the active environment set by browser_select."},
 					"variables":{"type":"object","description":"Key-value pairs for {{variable}} substitution in step params"},
 					"stopOnError":{"type":"boolean","description":"Stop replay on first error (default false)"},
 					"stepDelay":{"type":"number","description":"Delay between steps in milliseconds (default 500)"},
@@ -994,12 +1005,21 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		}
 		return string(out), nil
 
+	// ── Active env selection ──
+	case "browser_select":
+		envID := str(p, "envId")
+		if envID == "" {
+			return "", fmt.Errorf("envId is required")
+		}
+		mgr.SetActiveEnv(envID)
+		return fmt.Sprintf(`{"ok":true,"activeEnvId":%q}`, envID), nil
+
 	// ── Browser Actions ──
 	case "browser_navigate":
-		envID := str(p, "envId")
+		envID := resolveEnvID(mgr, p)
 		url := str(p, "url")
 		if envID == "" || url == "" {
-			return "", fmt.Errorf("envId and url are required")
+			return "", fmt.Errorf("envId (or browser_select) and url are required")
 		}
 		result, err := mgr.Navigate(envID, url)
 		if err != nil {
@@ -1009,9 +1029,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return string(b), nil
 
 	case "browser_snapshot":
-		envID := str(p, "envId")
+		envID := resolveEnvID(mgr, p)
 		if envID == "" {
-			return "", fmt.Errorf("envId is required")
+			return "", fmt.Errorf("envId (or browser_select) is required")
 		}
 		sid := str(p, "sessionId")
 		interactiveOnly := boolVal(p, "interactiveOnly")
@@ -1029,9 +1049,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return string(raw), nil
 
 	case "browser_click":
-		envID, sel := str(p, "envId"), str(p, "selector")
+		envID, sel := resolveEnvID(mgr, p), str(p, "selector")
 		if envID == "" || sel == "" {
-			return "", fmt.Errorf("envId and selector are required")
+			return "", fmt.Errorf("envId (or browser_select) and selector are required")
 		}
 		if err := mgr.Click(envID, str(p, "sessionId"), sel); err != nil {
 			return "", err
@@ -1039,9 +1059,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_click_ref":
-		envID, ref := str(p, "envId"), str(p, "ref")
+		envID, ref := resolveEnvID(mgr, p), str(p, "ref")
 		if envID == "" || ref == "" {
-			return "", fmt.Errorf("envId and ref are required")
+			return "", fmt.Errorf("envId (or browser_select) and ref are required")
 		}
 		if err := mgr.ClickRef(envID, str(p, "sessionId"), ref); err != nil {
 			return "", err
@@ -1049,9 +1069,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_dblclick":
-		envID, sel := str(p, "envId"), str(p, "selector")
+		envID, sel := resolveEnvID(mgr, p), str(p, "selector")
 		if envID == "" || sel == "" {
-			return "", fmt.Errorf("envId and selector are required")
+			return "", fmt.Errorf("envId (or browser_select) and selector are required")
 		}
 		if err := mgr.DblClick(envID, str(p, "sessionId"), sel); err != nil {
 			return "", err
@@ -1059,9 +1079,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_focus":
-		envID, sel := str(p, "envId"), str(p, "selector")
+		envID, sel := resolveEnvID(mgr, p), str(p, "selector")
 		if envID == "" || sel == "" {
-			return "", fmt.Errorf("envId and selector are required")
+			return "", fmt.Errorf("envId (or browser_select) and selector are required")
 		}
 		if err := mgr.Focus(envID, str(p, "sessionId"), sel); err != nil {
 			return "", err
@@ -1069,9 +1089,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_focus_ref":
-		envID, ref := str(p, "envId"), str(p, "ref")
+		envID, ref := resolveEnvID(mgr, p), str(p, "ref")
 		if envID == "" || ref == "" {
-			return "", fmt.Errorf("envId and ref are required")
+			return "", fmt.Errorf("envId (or browser_select) and ref are required")
 		}
 		if err := mgr.FocusRef(envID, str(p, "sessionId"), ref); err != nil {
 			return "", err
@@ -1079,9 +1099,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_type":
-		envID, sel, text := str(p, "envId"), str(p, "selector"), str(p, "text")
+		envID, sel, text := resolveEnvID(mgr, p), str(p, "selector"), str(p, "text")
 		if envID == "" || sel == "" || text == "" {
-			return "", fmt.Errorf("envId, selector and text are required")
+			return "", fmt.Errorf("envId (or browser_select), selector and text are required")
 		}
 		if err := mgr.Type(envID, str(p, "sessionId"), sel, text); err != nil {
 			return "", err
@@ -1089,9 +1109,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_type_ref":
-		envID, ref, text := str(p, "envId"), str(p, "ref"), str(p, "text")
+		envID, ref, text := resolveEnvID(mgr, p), str(p, "ref"), str(p, "text")
 		if envID == "" || ref == "" || text == "" {
-			return "", fmt.Errorf("envId, ref and text are required")
+			return "", fmt.Errorf("envId (or browser_select), ref and text are required")
 		}
 		if err := mgr.TypeRef(envID, str(p, "sessionId"), ref, text); err != nil {
 			return "", err
@@ -1099,9 +1119,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_fill":
-		envID, sel, text := str(p, "envId"), str(p, "selector"), str(p, "text")
+		envID, sel, text := resolveEnvID(mgr, p), str(p, "selector"), str(p, "text")
 		if envID == "" || sel == "" || text == "" {
-			return "", fmt.Errorf("envId, selector and text are required")
+			return "", fmt.Errorf("envId (or browser_select), selector and text are required")
 		}
 		if err := mgr.Fill(envID, str(p, "sessionId"), sel, text); err != nil {
 			return "", err
@@ -1109,9 +1129,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_fill_ref":
-		envID, ref, text := str(p, "envId"), str(p, "ref"), str(p, "text")
+		envID, ref, text := resolveEnvID(mgr, p), str(p, "ref"), str(p, "text")
 		if envID == "" || ref == "" || text == "" {
-			return "", fmt.Errorf("envId, ref and text are required")
+			return "", fmt.Errorf("envId (or browser_select), ref and text are required")
 		}
 		if err := mgr.FillRef(envID, str(p, "sessionId"), ref, text); err != nil {
 			return "", err
@@ -1119,9 +1139,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_find_click_text":
-		envID, text := str(p, "envId"), str(p, "text")
+		envID, text := resolveEnvID(mgr, p), str(p, "text")
 		if envID == "" || text == "" {
-			return "", fmt.Errorf("envId and text are required")
+			return "", fmt.Errorf("envId (or browser_select) and text are required")
 		}
 		if err := mgr.FindClickText(envID, str(p, "sessionId"), text); err != nil {
 			return "", err
@@ -1129,9 +1149,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_press_key":
-		envID, key := str(p, "envId"), str(p, "key")
+		envID, key := resolveEnvID(mgr, p), str(p, "key")
 		if envID == "" || key == "" {
-			return "", fmt.Errorf("envId and key are required")
+			return "", fmt.Errorf("envId (or browser_select) and key are required")
 		}
 		if err := mgr.PressKey(envID, str(p, "sessionId"), key); err != nil {
 			return "", err
@@ -1139,9 +1159,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_keyboard_type":
-		envID, text := str(p, "envId"), str(p, "text")
+		envID, text := resolveEnvID(mgr, p), str(p, "text")
 		if envID == "" || text == "" {
-			return "", fmt.Errorf("envId and text are required")
+			return "", fmt.Errorf("envId (or browser_select) and text are required")
 		}
 		if err := mgr.KeyboardType(envID, str(p, "sessionId"), text); err != nil {
 			return "", err
@@ -1149,9 +1169,9 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		return `{"ok":true}`, nil
 
 	case "browser_insert_text":
-		envID, text := str(p, "envId"), str(p, "text")
+		envID, text := resolveEnvID(mgr, p), str(p, "text")
 		if envID == "" || text == "" {
-			return "", fmt.Errorf("envId and text are required")
+			return "", fmt.Errorf("envId (or browser_select) and text are required")
 		}
 		if err := mgr.KeyboardInsertText(envID, str(p, "sessionId"), text); err != nil {
 			return "", err
@@ -1761,9 +1781,9 @@ func validateScene(s *recorder.Scene) error {
 // replayScene is the dispatch helper for scene_replay.
 func replayScene(mgr *brosdk.Manager, p map[string]any) (string, error) {
 	name := str(p, "name")
-	envID := str(p, "envId")
+	envID := resolveEnvID(mgr, p)
 	if name == "" || envID == "" {
-		return "", fmt.Errorf("name and envId are required")
+		return "", fmt.Errorf("name is required and envId must be set (via envId param or browser_select)")
 	}
 
 	path := filepath.Join(ScenesDir(), name+".json")
@@ -1836,4 +1856,13 @@ func strSlice(p map[string]any, key string) []string {
 		}
 	}
 	return out
+}
+
+// resolveEnvID returns the envId from params, falling back to the
+// active envId set by browser_select. Returns "" if neither is set.
+func resolveEnvID(mgr *brosdk.Manager, p map[string]any) string {
+	if v, ok := p["envId"].(string); ok && v != "" {
+		return v
+	}
+	return mgr.GetActiveEnv()
 }

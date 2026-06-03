@@ -147,7 +147,7 @@ Real-time progress is printed to console during download.
 | `/message`     | POST   | JSON-RPC 2.0 request endpoint       |
 | `/health`      | GET    | Health check (returns `200 OK`)     |
 
-## MCP Tools (65)
+## MCP Tools (66)
 
 ### SDK Info (3)
 
@@ -157,17 +157,22 @@ Real-time progress is printed to console during download.
 | `sdk_token_update` | Async     | `userSig` (required)                       | Refresh userSig; result via `sdk-event` SSE     |
 | `sdk_get_user_sig` | Sync      | `apiKey` (required), `duration`            | Obtain userSig via apiKey (can call before sdk_init) |
 
-### Browser Control (5)
+### Browser Control (6)
 
 | Tool              | Sync/Async | Parameters                                  | Description                                     |
 |-------------------|-----------|---------------------------------------------|-------------------------------------------------|
 | `browser_install` | Async     | `channel`                                   | Install/update browser core; progress via `sdk-event` SSE |
 | `browser_info`    | Sync      | —                                           | List currently running browser environments     |
-| `browser_open`    | Async     | `envId` (required), `urls`, `args`          | Open browser environment; `browser-open-success` = CDP ready |
+| `browser_open`    | Async     | `envId` (required), `urls`, `args`          | Open browser environment; `browser-open-success` = CDP ready; auto-sets as active env |
 | `browser_close`   | Async     | `envId` (required)                          | Close browser environment                       |
+| `browser_select`   | Sync      | `envId` (required)                          | **Set active environment**; subsequent Browser Actions use it when `envId` is omitted |
 | `browser_command` | Sync      | `envId`, `method` (required), `params`, `sessionId` | Send raw CDP command to browser          |
 
-### Browser Actions (43)
+### Browser Actions (44)
+
+> **`envId` parameter**: Now **optional** for all Browser Actions.
+> Use `browser_select` to set the active environment; subsequent actions can omit `envId`.
+> Explicit `envId` still works and overrides the active environment.
 
 #### Page Navigation
 
@@ -281,12 +286,19 @@ Real-time progress is printed to console during download.
 1. record_start({envId:"env-1"})                    → Start recording
 2. browser_navigate/browser_click/browser_fill...    → Operations auto-captured (WaitFor guards auto-inferred)
 3. record_stop({name:"login_flow"})                  → Auto-save to workDir/scenes/login_flow.json
-4. scene_replay({name:"login_flow", envId:"env-2",   → Replay in new env with variables
-     variables:{"username":"alice","password":"s3cret"}})
 
-// Fast headless replay (skip human delay)
-5. scene_replay({name:"login_flow", envId:"env-3",
-     applyHumanDelay: false, stepDelay: 100})
+# Method A: explicit envId (backward compatible)
+4a. scene_replay({name:"login_flow", envId:"env-2",
+      variables:{"username":"alice","password":"s3cret"}})
+
+# Method B: set active env once, omit envId after
+4b. browser_select({envId:"env-2"})                → Set as active environment
+    scene_replay({name:"login_flow",                → envId omitted, uses active env
+      variables:{"username":"alice","password":"s3cret"}})
+
+# Fast replay (skip human delay)
+5. scene_replay({name:"login_flow",
+      applyHumanDelay: false, stepDelay: 100})
 ```
 
 - `envId`/`sessionId` are auto-stripped during recording; injected by caller at replay

@@ -9,13 +9,13 @@ import (
 // Manager wraps the native BroSDK library and exposes a clean Go API.
 // It is safe to use from multiple goroutines.
 type Manager struct {
-	mu             sync.RWMutex
-	lib            nativeLib
-	listeners      []func(Event)
-	debugPorts     map[string]int         // envId → remoteDebuggingPort (from browser-open-success)
-	activeSessions map[string]string      // envId → active CDP sessionId (legacy)
-	browsers       map[string]*browserTab // envId → chromedp resources
-	workDir        string                 // base path for screenshots/PDFs output
+	mu            sync.RWMutex
+	lib           nativeLib
+	listeners     []func(Event)
+	debugPorts    map[string]int         // envId → remoteDebuggingPort (from browser-open-success)
+	activeEnvID   string                // currently active browser environment (set by browser_select)
+	browsers      map[string]*browserTab // envId → chromedp resources
+	workDir       string                // base path for screenshots/PDFs output
 }
 
 // NewManager creates an empty Manager. Call Load before any SDK operations.
@@ -94,6 +94,22 @@ func (m *Manager) Shutdown() error {
 		return l.shutdown()
 	})
 	return err
+}
+
+// SetActiveEnv sets the currently active browser environment ID.
+// All Browser Action tools will use this envId when their own envId is omitted.
+func (m *Manager) SetActiveEnv(envID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.activeEnvID = envID
+}
+
+// GetActiveEnv returns the currently active browser environment ID.
+// Returns empty string if no environment has been selected.
+func (m *Manager) GetActiveEnv() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.activeEnvID
 }
 
 // TokenUpdate refreshes the userSig asynchronously.

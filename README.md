@@ -17,7 +17,7 @@
 
 ## 功能概览
 
-- 通过 65 个 MCP Tool 暴露 BroSDK 全部能力：SDK 生命周期、浏览器控制、浏览器高级操作、环境 CRUD、**浏览器录制回放**
+- 通过 66 个 MCP Tool 暴露 BroSDK 全部能力：SDK 生命周期、浏览器控制、浏览器高级操作、环境 CRUD、**浏览器录制回放**
 - 基于 [chromedp](https://github.com/chromedp/chromedp) 的高层浏览器操作——点击、输入、截图、PDF 等，无需手写 CDP 命令
 - 保留 `browser_command` 透明 CDP 代理，支持所有 DevTools 命令的高级/自定义场景
 - **录制回放**：`record_start` → 操作（自动捕获）→ `record_stop` 自动保存场景，`scene_replay` 一键回放，支持 `{{变量}}` 替换
@@ -146,7 +146,7 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | `/message` | POST | JSON-RPC 2.0 请求端点         |
 | `/health`  | GET  | 健康检查（返回 `200 OK`）      |
 
-## MCP Tools（65 个）
+## MCP Tools（66 个）
 
 ### SDK 信息（3 个）
 
@@ -156,27 +156,32 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | `sdk_token_update` | Async    | `userSig` (必填)                           | 刷新 userSig，结果通过 `sdk-event` SSE 返回    |
 | `sdk_get_user_sig` | Sync     | `apiKey` (必填), `duration`               | 通过 apiKey 获取 userSig（可在 sdk_init 前调用）|
 
-### 浏览器控制（5 个）
+### 浏览器控制（6 个）
 
 | Tool              | 同步/异步 | 参数                                       | 说明                                           |
 |-------------------|----------|--------------------------------------------|-----------------------------------------------|
 | `browser_install` | Async    | `channel`                                  | 安装/更新浏览器内核；进度通过 `sdk-event` SSE 推送 |
 | `browser_info`    | Sync     | —                                          | 列出当前运行的浏览器环境                         |
-| `browser_open`    | Async    | `envId` (必填), `urls`, `args`             | 打开浏览器环境；`browser-open-success` 事件表示 CDP 就绪 |
+| `browser_open`    | Async    | `envId` (必填), `urls`, `args`             | 打开浏览器环境；`browser-open-success` 事件表示 CDP 就绪；成功后自动设为激活环境 |
 | `browser_close`   | Async    | `envId` (必填)                             | 关闭浏览器环境                                   |
+| `browser_select`   | Sync     | `envId` (必填)                             | **设置激活环境**；后续 Browser Actions 未指定 `envId` 时自动使用此环境 |
 | `browser_command` | Sync     | `envId`, `method` (必填), `params`, `sessionId` | 发送原始 CDP 命令到浏览器                       |
 
-### 浏览器高级操作（43 个）
+### 浏览器高级操作（44 个）
+
+> **`envId` 参数说明**：所有 Browser Actions 的 `envId` 参数现改为**可选**。
+> 先用 `browser_select` 设置激活环境，后续操作可省略 `envId`。
+> 显式传入 `envId` 仍受支持，会覆盖激活环境。
 
 #### 页面导航
 
 | Tool              | 参数                                         | 说明                                              |
 |-------------------|---------------------------------------------|---------------------------------------------------|
 | `browser_navigate`| `envId`, `url` (必填)                        | 打开 URL，返回 `{targetId, sessionId}`             |
-| `browser_reload`  | `envId` (必填), `sessionId`                  | 重新加载当前页面                                    |
-| `browser_back`    | `envId` (必填), `sessionId`                  | 浏览器后退                                          |
-| `browser_forward` | `envId` (必填), `sessionId`                  | 浏览器前进                                          |
-| `browser_snapshot`| `envId` (必填), `sessionId`                  | 获取页面无障碍树，含 `backendDOMNodeId`，供 `_ref` 工具使用 |
+| `browser_reload`  | `envId`, `sessionId`                        | 重新加载当前页面（envId 可省略，使用激活环境）    |
+| `browser_back`    | `envId`, `sessionId`                        | 浏览器后退（envId 可省略，使用激活环境）          |
+| `browser_forward` | `envId`, `sessionId`                        | 浏览器前进（envId 可省略，使用激活环境）          |
+| `browser_snapshot`| `envId`, `sessionId`                        | 获取页面无障碍树，含 `backendDOMNodeId`，供 `_ref` 工具使用（envId 可省略） |
 
 #### 鼠标操作
 
@@ -280,12 +285,19 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 1. record_start({envId:"env-1"})                    → 开始录制
 2. browser_navigate/browser_click/browser_fill...    → 操作自动捕获（自动推断 WaitFor 守卫）
 3. record_stop({name:"login_flow"})                  → 自动保存到 workDir/scenes/login_flow.json
-4. scene_replay({name:"login_flow", envId:"env-2",   → 用变量在新环境中回放
-     variables:{"username":"alice","password":"s3cret"}})
 
-// 快速无头回放（跳过 human delay）
-5. scene_replay({name:"login_flow", envId:"env-3",
-     applyHumanDelay: false, stepDelay: 100})
+// 方式 A：显式传 envId（向后兼容）
+4a. scene_replay({name:"login_flow", envId:"env-2",
+      variables:{"username":"alice","password":"s3cret"}})
+
+// 方式 B：先选环境，后续省略 envId
+4b. browser_select({envId:"env-2"})                → 设为激活环境
+    scene_replay({name:"login_flow",                → envId 省略，使用激活环境
+      variables:{"username":"alice","password":"s3cret"}})
+
+// 快速回放（跳过 human delay）
+5. scene_replay({name:"login_flow",
+      applyHumanDelay: false, stepDelay: 100})
 ```
 
 - 录制时自动去除 `envId`/`sessionId`，回放时由调用方注入

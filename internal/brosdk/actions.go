@@ -160,14 +160,6 @@ func (m *Manager) CloseAllBrowsers() {
 	m.mu.Unlock()
 }
 
-// ---------- Session tracking (kept for backward compat) ----------
-
-// SetActiveSession is a no-op stub — chromedp manages sessions internally.
-func (m *Manager) SetActiveSession(envID, sessionID string) {}
-
-// GetActiveSession returns empty string — chromedp manages sessions internally.
-func (m *Manager) GetActiveSession(envID string) string { return "" }
-
 // ---------- helpers ----------
 
 // resolveNodeID resolves a backendNodeId to a cdp.NodeID.
