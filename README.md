@@ -254,8 +254,8 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | Tool                | 参数                                                             | 说明                      |
 |---------------------|-----------------------------------------------------------------|---------------------------|
 | `browser_upload_file`| `envId`, `selector`, `files` (必填), `sessionId`                | 上传文件                  |
-| `browser_screenshot` | `envId` (必填), `path`, `dir`, `format`, `quality`, `fullPage`, `sessionId` | 截图，默认保存至 workDir/screenshots/，返回绝对路径 |
-| `browser_pdf`       | `envId` (必填), `path`, `sessionId`                              | 生成 PDF，默认保存至 workDir/pdfs/output.pdf，返回绝对路径 |
+| `browser_screenshot` | `envId`, `path`, `dir`, `format`, `quality`, `fullPage`, `sessionId` | 截图，默认保存至 workDir/screenshots/，返回绝对路径（envId 可省略，使用激活环境） |
+| `browser_pdf`       | `envId`, `path`, `sessionId`                              | 生成 PDF，默认保存至 workDir/pdfs/output.pdf，返回绝对路径（envId 可省略，使用激活环境） |
 
 #### 文本查找/脚本
 
@@ -287,23 +287,24 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | `env_destroy` | Sync     | `envId` (必填)                             | 永久删除环境及所有数据          |
 | `env_getinfo` | Sync     | `envId` (必填)                             | 获取单个环境详情                 |
 
-### 录制回放（8 个）
+### 录制回放（9 个）
 
 | Tool           | 同步/异步 | 参数                                       | 说明                            |
 |----------------|----------|--------------------------------------------|---------------------------------|
-| `record_start` | Sync     | `envId` (必填)                             | 开始录制，后续操作自动捕获       |
+| `record_start` | Sync     | —                                          | 开始录制，后续操作自动捕获       |
 | `record_stop`  | Sync     | `name` (必填), `description`               | 停止录制并自动保存为 `scenes/{name}.json` |
 | `record_status`| Sync     | —                                          | 查看当前录制状态                 |
 | `scene_list`   | Sync     | —                                          | 列出所有已保存场景               |
 | `scene_get`    | Sync     | `name` (必填)                              | 查看场景详情（步骤 JSON）        |
 | `scene_update` | Sync     | `name` (必填), `scene` (必填)              | 编辑已保存场景的步骤和元数据     |
 | `scene_delete` | Sync     | `name` (必填)                              | 删除场景文件                     |
-| `scene_replay` | Sync     | `name` (必填), `envId` (必填), `variables`, `stopOnError`, `stepDelay`, `applyHumanDelay` | 加载场景并逐步回放。WaitFor 守卫确保每步完成后再执行下一步，支持 `{{变量}}` 替换 |
+| `scene_replay` | Sync     | `name` (必填), `envId`, `variables`, `stopOnError`, `stepDelay`, `applyHumanDelay` | 加载场景并逐步回放。WaitFor 守卫确保每步完成后再执行下一步，支持 `{{变量}}` 替换 |
+| `scene_save`   | Sync     | `name` (必填), `steps` (必填)              | 手动保存场景（通常由 `record_stop` 自动保存，极少直接使用） |
 
 #### 录制回放工作流
 
 ```
-1. record_start({envId:"env-1"})                    → 开始录制
+1. record_start()                                    → 开始录制
 2. browser_navigate/browser_click/browser_fill...    → 操作自动捕获（自动推断 WaitFor 守卫）
 3. record_stop({name:"login_flow"})                  → 自动保存到 workDir/scenes/login_flow.json
 

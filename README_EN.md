@@ -179,9 +179,9 @@ Real-time progress is printed to console during download.
 | Tool              | Parameters                                   | Description                                      |
 |-------------------|----------------------------------------------|--------------------------------------------------|
 | `browser_navigate`| `envId`, `url` (required)                    | Open URL; returns `{targetId, sessionId}`        |
-| `browser_reload`  | `envId` (required), `sessionId`               | Reload the current page                           |
-| `browser_back`    | `envId` (required), `sessionId`               | Navigate back in browser history                  |
-| `browser_forward` | `envId` (required), `sessionId`               | Navigate forward in browser history               |
+| `browser_reload`  | `envId`, `sessionId`               | Reload the current page                           |
+| `browser_back`    | `envId`, `sessionId`               | Navigate back in browser history                  |
+| `browser_forward` | `envId`, `sessionId`               | Navigate forward in browser history               |
 | `browser_snapshot`| `envId`, `sessionId`              | Capture accessibility tree with `backendDOMNodeId` refs |
 
 #### Tab Management
@@ -255,8 +255,8 @@ Real-time progress is printed to console during download.
 | Tool                | Parameters                                                          | Description                  |
 |---------------------|--------------------------------------------------------------------|------------------------------|
 | `browser_upload_file`| `envId`, `selector`, `files` (required), `sessionId`              | Upload files to file input   |
-| `browser_screenshot` | `envId` (required), `path`, `dir`, `format`, `quality`, `fullPage`, `sessionId` | Screenshot, defaults to workDir/screenshots/, returns absolute path |
-| `browser_pdf`       | `envId` (required), `path`, `sessionId`                             | Generate PDF, defaults to workDir/pdfs/output.pdf, returns absolute path |
+| `browser_screenshot` | `envId`, `path`, `dir`, `format`, `quality`, `fullPage`, `sessionId` | Screenshot, defaults to workDir/screenshots/, returns absolute path |
+| `browser_pdf`       | `envId`, `path`, `sessionId`                             | Generate PDF, defaults to workDir/pdfs/output.pdf, returns absolute path |
 
 #### Text Finding / Scripting
 
@@ -288,23 +288,24 @@ Real-time progress is printed to console during download.
 | `env_destroy` | Sync      | `envId` (required)                          | Permanently delete environment     |
 | `env_getinfo` | Sync      | `envId` (required)                          | Get single environment detail      |
 
-### Record & Replay (8)
+### Record & Replay (9)
 
 | Tool           | Sync/Async | Parameters                                       | Description                            |
 |----------------|----------|--------------------------------------------|---------------------------------|
-| `record_start` | Sync     | `envId` (required)                             | Start recording; subsequent operations are auto-captured |
+| `record_start` | Sync     | —                                          | Start recording; subsequent operations are auto-captured |
 | `record_stop`  | Sync     | `name` (required), `description`              | Stop recording and auto-save to `scenes/{name}.json` |
 | `record_status`| Sync     | —                                          | Check current recording status |
 | `scene_list`   | Sync     | —                                          | List all saved scenes |
 | `scene_get`    | Sync     | `name` (required)                              | View scene details (step JSON) |
 | `scene_update` | Sync     | `name` (required), `scene` (required)             | Edit scene steps and metadata |
 | `scene_delete` | Sync     | `name` (required)                              | Delete a scene file |
-| `scene_replay` | Sync     | `name` (required), `envId` (required), `variables`, `stopOnError`, `stepDelay`, `applyHumanDelay` | Load scene and replay step by step. WaitFor guards ensure each step completes before next. Supports `{{variable}}` substitution |
+| `scene_replay` | Sync     | `name` (required), `envId`, `variables`, `stopOnError`, `stepDelay`, `applyHumanDelay` | Load scene and replay step by step. WaitFor guards ensure each step completes before next. Supports `{{variable}}` substitution |
+| `scene_save`   | Sync     | `name` (required), `steps` (required)             | Manually save scene (usually auto-saved by `record_stop`) |
 
 #### Recording Replay Workflow
 
 ```
-1. record_start({envId:"env-1"})                    → Start recording
+1. record_start()                                    → Start recording
 2. browser_navigate/browser_click/browser_fill...    → Operations auto-captured (WaitFor guards auto-inferred)
 3. record_stop({name:"login_flow"})                  → Auto-save to workDir/scenes/login_flow.json
 
