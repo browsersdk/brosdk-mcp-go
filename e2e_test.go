@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +22,20 @@ import (
 	"github.com/browsersdk/brosdk-mcp-go/internal/tools"
 )
 
+var sharedE2E struct {
+	mu      sync.Mutex
+	ready   bool
+	skipped string
+	mgr     *brosdk.Manager
+	srv     *mcp.Server
+	httpSrv *http.Server
+	client  *mcpClient
+	sseCh   chan sseEvent
+	cancel  context.CancelFunc
+	baseURL string
+	cfg     *config.Config
+	envID   string
+}
 
 // ---------- JSON-RPC helpers ----------
 
@@ -191,6 +206,50 @@ type e2eFixture struct {
 // and connects an SSE stream. Call f.cleanup() when done.
 func setupE2E(t *testing.T) *e2eFixture {
 	t.Helper()
+	if reason := ensureSharedE2E(t); reason != "" {
+		t.Skip(reason)
+	}
+	sharedE2E.mu.Lock()
+	defer sharedE2E.mu.Unlock()
+
+	return &e2eFixture{
+		t:          t,
+		mgr:        sharedE2E.mgr,
+		srv:        sharedE2E.srv,
+		httpSrv:    sharedE2E.httpSrv,
+		client:     sharedE2E.client,
+		sseCh:      sharedE2E.sseCh,
+		cancel:     func() {},
+		baseURL:    sharedE2E.baseURL,
+		cfg:        sharedE2E.cfg,
+		firstEnvID: sharedE2E.envID,
+	}
+}
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	sharedE2E.mu.Lock()
+	if sharedE2E.cancel != nil {
+		sharedE2E.cancel()
+	}
+	if sharedE2E.httpSrv != nil {
+		sharedE2E.httpSrv.Close()
+	}
+	if sharedE2E.mgr != nil && sharedE2E.mgr.Loaded() {
+		sharedE2E.mgr.CloseAllBrowsers()
+		_ = sharedE2E.mgr.Shutdown()
+	}
+	sharedE2E.mu.Unlock()
+	os.Exit(code)
+}
+
+func ensureSharedE2E(t *testing.T) string {
+	t.Helper()
+	sharedE2E.mu.Lock()
+	defer sharedE2E.mu.Unlock()
+	if sharedE2E.ready || sharedE2E.skipped != "" {
+		return sharedE2E.skipped
+	}
 
 	// ── Resolve working directory ──────────────────────────────────────
 	wd, _ := os.Getwd()
@@ -202,7 +261,8 @@ func setupE2E(t *testing.T) *e2eFixture {
 		t.Fatalf("config.Load: %v", err)
 	}
 	if cfg == nil {
-		t.Skip("no config.local.json or config.json found — skipping e2e test")
+		sharedE2E.skipped = "no config.local.json or config.json found — skipping e2e test"
+		return sharedE2E.skipped
 	}
 	t.Logf("config: apiKey=%s port=%d workDir=%s", maskStr(cfg.ApiKey), cfg.Port, cfg.WorkDir)
 
@@ -302,29 +362,27 @@ func setupE2E(t *testing.T) *e2eFixture {
 	time.Sleep(100 * time.Millisecond)
 	t.Log("SSE connected")
 
-	return &e2eFixture{
-		t:       t,
-		mgr:     mgr,
-		srv:     srv,
-		httpSrv: httpSrv,
-		client:  client,
-		sseCh:   sseCh,
-		cancel:  cancel,
-		baseURL: baseURL,
-		cfg:     cfg,
-	}
+	sharedE2E.ready = true
+	sharedE2E.mgr = mgr
+	sharedE2E.srv = srv
+	sharedE2E.httpSrv = httpSrv
+	sharedE2E.client = client
+	sharedE2E.sseCh = sseCh
+	sharedE2E.cancel = cancel
+	sharedE2E.baseURL = baseURL
+	sharedE2E.cfg = cfg
+	return ""
 }
 
 func (f *e2eFixture) cleanup() {
-	f.cancel()
-	f.httpSrv.Close()
-	// Best-effort SDK shutdown.
-	if f.mgr.Loaded() {
-		_ = f.mgr.Shutdown()
+	// SDK is a process singleton; final cleanup happens in TestMain.
+	if f.mgr != nil {
+		f.mgr.CloseAllBrowsers()
 	}
+	f.drainSSE()
 }
 
-	// waitSSEEvent drains SSE events until one matches dataContains, or timeout.
+// waitSSEEvent drains SSE events until one matches dataContains, or timeout.
 // Returns the matching event and true, or zero-value + false on timeout.
 // If logFull is true, logs the complete data payload (useful for debugging).
 func (f *e2eFixture) waitSSEEvent(dataContains string, timeout time.Duration) (brosdk.Event, bool) {
@@ -385,6 +443,11 @@ func (f *e2eFixture) getFirstEnvID() string {
 		f.t.Fatalf("extract envId: %v (raw=%.200s)", err, resp.Result)
 	}
 	f.firstEnvID = id
+	sharedE2E.mu.Lock()
+	if sharedE2E.envID == "" {
+		sharedE2E.envID = id
+	}
+	sharedE2E.mu.Unlock()
 	f.t.Logf("first envId = %s", id)
 	return id
 }

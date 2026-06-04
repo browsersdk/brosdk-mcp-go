@@ -17,12 +17,13 @@ type DispatchFunc func(mgr *brosdk.Manager, name string, params map[string]any) 
 
 // StepResult is the replay outcome for a single step.
 type StepResult struct {
-	Index      int   `json:"index"`
+	Index      int    `json:"index"`
 	Tool       string `json:"tool"`
 	Ok         bool   `json:"ok"`
 	DurationMs int64  `json:"durationMs"`
 	Result     string `json:"result,omitempty"`
 	Error      string `json:"error,omitempty"`
+	GuardWarn  string `json:"guardWarn,omitempty"`
 }
 
 // ReplayResult is the aggregate replay outcome.
@@ -35,10 +36,10 @@ type ReplayResult struct {
 
 // ReplayOptions controls replay behavior.
 type ReplayOptions struct {
-	EnvID          string
-	Variables      map[string]string
-	StopOnError    bool
-	StepDelay      time.Duration
+	EnvID           string
+	Variables       map[string]string
+	StopOnError     bool
+	StepDelay       time.Duration
 	ApplyHumanDelay bool // if true, insert recorded human pauses between steps (max 3s per step)
 }
 
@@ -136,7 +137,7 @@ func (p *Player) executeStep(step Step, opts ReplayOptions) (sr StepResult) {
 			// Guard failure is a soft error: the step itself succeeded,
 			// but the expected side effect didn't materialize. Log it as
 			// an annotation so the caller can decide whether to stop.
-			sr.Result = fmt.Sprintf(`%s{"guardWarn":%q}`, sr.Result, guardErr.Error())
+			sr.GuardWarn = guardErr.Error()
 		}
 	}
 

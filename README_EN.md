@@ -255,7 +255,7 @@ Real-time progress is printed to console during download.
 | Tool                | Parameters                                                          | Description                  |
 |---------------------|--------------------------------------------------------------------|------------------------------|
 | `browser_upload_file`| `envId`, `selector`, `files` (required), `sessionId`              | Upload files to file input   |
-| `browser_screenshot` | `envId`, `path`, `dir`, `format`, `quality`, `fullPage`, `sessionId` | Screenshot, defaults to workDir/screenshots/, returns absolute path |
+| `browser_screenshot` | `envId`, `path`, `dir`, `screenshotDir`, `format`, `quality`, `fullPage`, `sessionId` | Screenshot, defaults to workDir/screenshots/, returns absolute path. `screenshotDir` is a backward-compatible alias for `dir` |
 | `browser_pdf`       | `envId`, `path`, `sessionId`                             | Generate PDF, defaults to workDir/pdfs/output.pdf, returns absolute path |
 
 #### Text Finding / Scripting
@@ -275,8 +275,8 @@ Real-time progress is printed to console during download.
 | `browser_wait`          | `envId`, `text`, `role`, `name`, `selector`, `timeout`, `waitFor`, `delay` | Wait for a condition; `waitFor` supports `navigation` (readyState), `selector` (CSS appeared), `text` (text visible), `time` (fixed ms) |
 | `browser_page_state`    | `envId`, `sessionId`                   | Return `{readyState, title, url}` to check page load state |
 | `browser_exists`        | `envId`, `role`, `name`, `value`, `selector`, `sessionId` | Quick boolean check if element exists |
-| `browser_dialog`        | `envId`, `action`, `promptText`, `sessionId` | Read/accept/dismiss dialogs (alert/confirm/prompt) |
-| `browser_fill_form`     | `envId`, `fields` (required), `submitSelector` | Batch fill form fields in one call instead of multiple fill/type |
+| `browser_dialog`        | `envId`, `action`, `sessionId` | Read/accept/dismiss dialogs (alert/confirm/prompt) |
+| `browser_fill_form`     | `envId`, `fields` (required), `submitSelector` | Batch fill form fields; `fields` is an object mapping CSS selectors to values |
 
 ### Environment Management (5)
 
@@ -293,14 +293,14 @@ Real-time progress is printed to console during download.
 | Tool           | Sync/Async | Parameters                                       | Description                            |
 |----------------|----------|--------------------------------------------|---------------------------------|
 | `record_start` | Sync     | —                                          | Start recording; subsequent operations are auto-captured |
-| `record_stop`  | Sync     | `name` (required), `description`              | Stop recording and auto-save to `scenes/{name}.json` |
+| `record_stop`  | Sync     | `name` (required), `description`              | Stop recording and auto-save to `scenes/{name}.json`; existing scenes with the same name are overwritten |
 | `record_status`| Sync     | —                                          | Check current recording status |
 | `scene_list`   | Sync     | —                                          | List all saved scenes |
 | `scene_get`    | Sync     | `name` (required)                              | View scene details (step JSON) |
 | `scene_update` | Sync     | `name` (required), `scene` (required)             | Edit scene steps and metadata |
 | `scene_delete` | Sync     | `name` (required)                              | Delete a scene file |
 | `scene_replay` | Sync     | `name` (required), `envId`, `variables`, `stopOnError`, `stepDelay`, `applyHumanDelay` | Load scene and replay step by step. WaitFor guards ensure each step completes before next. Supports `{{variable}}` substitution |
-| `scene_save`   | Sync     | `name` (required), `steps` (required)             | Manually save scene (usually auto-saved by `record_stop`) |
+| `scene_save`   | Sync     | `name` (required), `scene` (required)             | Manually save a complete scene object (usually auto-saved by `record_stop`) |
 
 #### Recording Replay Workflow
 
@@ -326,8 +326,10 @@ Real-time progress is printed to console during download.
 - `envId`/`sessionId` are auto-stripped during recording; injected by caller at replay
 - Steps support `{{variable}}` placeholders for dynamic substitution
 - Max 200 steps; default 500ms inter-step delay
+- Scene names may contain only letters, numbers, `.`, `_`, and `-`; `record_stop` overwrites existing scenes with the same name so agents can iterate recordings easily
 - Scene files are JSON, human-readable, git-friendly
 - **WaitFor guard**: navigate/click steps auto-infer completion condition (`readyState:complete`), replay blocks instead of blind wait
+- Failed WaitFor guards are returned as a structured `guardWarn` field on the step result without marking the successful tool step as failed
 - **HumanDelay**: inter-step human pauses captured during recording (capped at 3s), replay enables by default (`applyHumanDelay: true`), can disable for speed
 
 ## Ref-Based Targeting
@@ -392,6 +394,8 @@ browser_open → browser-open-success → extract remoteDebuggingPort
 | `params`    | No       | object | CDP command parameters                                            |
 | `sessionId` | No       | string | CDP session ID                                                    |
 | `body`      | No       | string | Raw JSON body; overrides other fields when provided               |
+
+`body` example: `{"method":"Runtime.evaluate","params":{"expression":"document.title"},"sessionId":"..."}`.
 
 ### High-Level Tools vs CDP Commands
 

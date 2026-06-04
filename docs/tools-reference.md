@@ -21,7 +21,7 @@
 | `browser_select` | sync | `envId` (required) | `{envId}` | Set active browser environment for subsequent actions |
 | `browser_open` | async | `envId` (required), `urls[]`, `args[]` | `reqId` | Open browser; wait for `browser-open-success` |
 | `browser_close` | async | `envId` (required) | `reqId` | Close browser |
-| `browser_command` | sync | `envId`, `method` (required), `params`, `sessionId` | CDP response | Raw CDP command |
+| `browser_command` | sync | `envId`, `method` (required unless `body` provides it), `params`, `sessionId`, `body` | CDP response | Raw CDP command. `body` is a raw JSON string and overrides `method`/`params`/`sessionId` when provided |
 
 ## 3. Browser Actions (50 tools)
 
@@ -85,7 +85,7 @@
 | Tool | Parameters | Description |
 |------|-----------|-------------|
 | `browser_upload_file` | `envId`, `selector`, `files[]` (required), `sessionId` | Upload files to file input |
-| `browser_screenshot` | `envId`, `path`, `dir`, `format`, `quality`, `fullPage`, `sessionId` | Screenshot, defaults to workDir/screenshots/, returns absolute path |
+| `browser_screenshot` | `envId`, `path`, `dir`, `screenshotDir`, `format`, `quality`, `fullPage`, `sessionId` | Screenshot, defaults to workDir/screenshots/, returns absolute path. `screenshotDir` is a backward-compatible alias for `dir` |
 | `browser_pdf` | `envId`, `path`, `sessionId` | Generate PDF, defaults to workDir/pdfs/output.pdf, returns absolute path |
 
 ### 3.7 Text Finding / Scripting
@@ -130,8 +130,8 @@ Designed for AI agent workflows — reduce token usage, simplify element targeti
 | `browser_wait` | `envId`, `waitFor`, `text`, `role`, `name`, `selector`, `timeout`, `delay` | `{found,elapsedMs}` / `{readyState}` | Wait for condition. `waitFor` modes: `navigation` (page readyState), `selector` (CSS appears), `text` (text visible), `time` (fixed ms). Omitting `waitFor` auto-detects from params |
 | `browser_page_state` | `envId` | `{title, url, readyState}` | Fast page metadata — no snapshot overhead |
 | `browser_exists` | `envId`, `role`, `name`, `value`, `selector` | `{exists}` | Boolean element existence check |
-| `browser_dialog` | `envId`, `action` (accept/dismiss), `promptText` | `{action, message}` | Handle JS alert/confirm/prompt via page-side capture |
-| `browser_fill_form` | `envId`, `fields[{ref,selector,value}]`, `submitRef`, `submitSelector` | `{filled, submitted}` | Batch fill form fields + optional submit |
+| `browser_dialog` | `envId`, `action` (accept/dismiss) | `{action, message}` | Handle JS alert/confirm/prompt via page-side capture |
+| `browser_fill_form` | `envId`, `fields`, `submitSelector` | `{filled, errors}` | Batch fill form fields + optional submit. `fields` is an object mapping CSS selectors to values |
 
 ## 4. Environment Management (5 tools)
 
@@ -147,20 +147,23 @@ Designed for AI agent workflows — reduce token usage, simplify element targeti
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
-| `record_start` | `name` | Start recording browser actions |
-| `record_stop` | — | Stop recording, auto-save to `scenes/{name}.json` |
+| `record_start` | — | Start recording browser actions |
+| `record_stop` | `name` (required), `description` | Stop recording, auto-save to `scenes/{name}.json`. Existing scenes with the same name are overwritten |
 | `record_status` | — | Get recording status |
 | `scene_list` | — | List all saved scenes |
 | `scene_get` | `name` (required) | Get scene details + steps |
 | `scene_update` | `name` (required), `steps`, ... | Update scene (steps, variables, etc.) |
 | `scene_delete` | `name` (required) | Delete a scene |
 | `scene_replay` | `name` (required), `envId`, `variables`, `stopOnError`, `stepDelay`, `applyHumanDelay` | Replay scene with **WaitFor guards** + optional human delay |
-| `scene_save` | `name` (required), `steps` | Manually save scene (rare; `record_stop` auto-saves) |
+| `scene_save` | `name` (required), `scene` (required) | Manually save a complete scene object (rare; `record_stop` auto-saves) |
 
 **Replay features:**
 - **WaitFor guard**: Steps auto-infer post-conditions (e.g. `readyState:complete` after navigate/click). Replay blocks until satisfied — no blind sleep.
+- **Guard warnings**: A failed WaitFor guard is reported as `guardWarn` on the step result while keeping the successful tool step marked `ok`.
 - **HumanDelay**: Recorded inter-step human pauses captured as `HumanDelayMs`. Replay optionally applies them (`applyHumanDelay=true`, cap 3s).
 - **Ref fingerprint**: `_ref` tools auto-save snapshot fingerprint (name+role+value) during recording; replay matches DOM nodes dynamically.
+
+**Scene name rules:** scene names may contain letters, numbers, `.`, `_`, and `-` only. This keeps scene file operations inside the configured scenes directory.
 
 ---
 

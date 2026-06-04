@@ -254,7 +254,7 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | Tool                | 参数                                                             | 说明                      |
 |---------------------|-----------------------------------------------------------------|---------------------------|
 | `browser_upload_file`| `envId`, `selector`, `files` (必填), `sessionId`                | 上传文件                  |
-| `browser_screenshot` | `envId`, `path`, `dir`, `format`, `quality`, `fullPage`, `sessionId` | 截图，默认保存至 workDir/screenshots/，返回绝对路径（envId 可省略，使用激活环境） |
+| `browser_screenshot` | `envId`, `path`, `dir`, `screenshotDir`, `format`, `quality`, `fullPage`, `sessionId` | 截图，默认保存至 workDir/screenshots/，返回绝对路径；`screenshotDir` 是 `dir` 的兼容别名 |
 | `browser_pdf`       | `envId`, `path`, `sessionId`                              | 生成 PDF，默认保存至 workDir/pdfs/output.pdf，返回绝对路径（envId 可省略，使用激活环境） |
 
 #### 文本查找/脚本
@@ -274,8 +274,8 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | `browser_wait`          | `envId`, `text`, `role`, `name`, `selector`, `timeout`, `waitFor`, `delay` | 等待条件满足；`waitFor` 支持 `navigation`（页面 readyState）、`selector`（CSS 出现）、`text`（文本出现）、`time`（固定毫秒） |
 | `browser_page_state`    | `envId`, `sessionId`                        | 返回 `{readyState, title, url}` 三元组，判断页面加载状态 |
 | `browser_exists`        | `envId`, `role`, `name`, `value`, `selector`, `sessionId` | 快速检查元素是否存在，返回 boolean |
-| `browser_dialog`        | `envId`, `action`, `promptText`, `sessionId` | 读取/接受/取消浏览器弹窗（alert/confirm/prompt） |
-| `browser_fill_form`     | `envId`, `fields` (必填), `submitSelector`   | 批量填充多字段表单，一次调用替代多次 fill/type |
+| `browser_dialog`        | `envId`, `action`, `sessionId` | 读取/接受/取消浏览器弹窗（alert/confirm/prompt） |
+| `browser_fill_form`     | `envId`, `fields` (必填), `submitSelector`   | 批量填充多字段表单；`fields` 为 CSS selector 到 value 的对象 |
 
 ### 环境管理（5 个）
 
@@ -292,14 +292,14 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 | Tool           | 同步/异步 | 参数                                       | 说明                            |
 |----------------|----------|--------------------------------------------|---------------------------------|
 | `record_start` | Sync     | —                                          | 开始录制，后续操作自动捕获       |
-| `record_stop`  | Sync     | `name` (必填), `description`               | 停止录制并自动保存为 `scenes/{name}.json` |
+| `record_stop`  | Sync     | `name` (必填), `description`               | 停止录制并自动保存为 `scenes/{name}.json`；同名场景会直接覆盖 |
 | `record_status`| Sync     | —                                          | 查看当前录制状态                 |
 | `scene_list`   | Sync     | —                                          | 列出所有已保存场景               |
 | `scene_get`    | Sync     | `name` (必填)                              | 查看场景详情（步骤 JSON）        |
 | `scene_update` | Sync     | `name` (必填), `scene` (必填)              | 编辑已保存场景的步骤和元数据     |
 | `scene_delete` | Sync     | `name` (必填)                              | 删除场景文件                     |
 | `scene_replay` | Sync     | `name` (必填), `envId`, `variables`, `stopOnError`, `stepDelay`, `applyHumanDelay` | 加载场景并逐步回放。WaitFor 守卫确保每步完成后再执行下一步，支持 `{{变量}}` 替换 |
-| `scene_save`   | Sync     | `name` (必填), `steps` (必填)              | 手动保存场景（通常由 `record_stop` 自动保存，极少直接使用） |
+| `scene_save`   | Sync     | `name` (必填), `scene` (必填)              | 手动保存完整场景对象（通常由 `record_stop` 自动保存，极少直接使用） |
 
 #### 录制回放工作流
 
@@ -325,8 +325,10 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 - 录制时自动去除 `envId`/`sessionId`，回放时由调用方注入
 - 步骤中可使用 `{{变量名}}` 占位符，回放时替换为实际值
 - 最大 200 步，步骤间默认 500ms 延迟
+- 场景名称仅支持字母、数字、`.`、`_`、`-`，避免写入 scenes 目录之外；`record_stop` 会直接覆盖同名场景，方便 Agent 反复录制迭代
 - 场景文件为 JSON 格式，可读可 git 管理
 - **WaitFor 守卫**：navigate/click 等步骤自动推断完成条件（`readyState:complete`），回放阻塞等待而非盲等
+- WaitFor 守卫失败不会中断成功步骤，会在回放结果的 `guardWarn` 字段中返回警告
 - **HumanDelay**：录制时自动捕获操作之间的人类停顿（上限 3s），回放默认启用（`applyHumanDelay: true`），可关闭加速
 
 ## Ref 定位机制
@@ -392,6 +394,8 @@ browser_open → browser-open-success → 提取 remoteDebuggingPort
 | `params`   | 否     | object | CDP 命令参数                                                  |
 | `sessionId`| 否     | string | CDP session ID（用于 session 域命令）                         |
 | `body`     | 否     | string | 原始 JSON body（提供后覆盖 method/params/sessionId）          |
+
+`body` 示例：`{"method":"Runtime.evaluate","params":{"expression":"document.title"},"sessionId":"..."}`。
 
 ### 高层工具 vs CDP 命令对照
 

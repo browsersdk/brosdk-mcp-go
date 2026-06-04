@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -91,10 +92,10 @@ func All() []mcp.ToolDef {
 			Description: "[Advanced] Send a raw CDP command to a running browser. Prefer the high-level browser_* tools (browser_navigate, browser_click, etc.) for common operations.",
 			InputSchema: schema(`{
 				"type":"object",
-				"required":["envId","method"],
+				"required":["envId"],
 				"properties":{
 					"envId":{"type":"string","description":"Target environment ID"},
-					"method":{"type":"string","description":"CDP method name, e.g. 'Runtime.evaluate'"},
+					"method":{"type":"string","description":"CDP method name, e.g. 'Runtime.evaluate' (required unless body provides it)"},
 					"params":{"type":"object","description":"CDP command params (optional)"},
 					"sessionId":{"type":"string","description":"CDP session ID for session-scoped commands (optional)"},
 					"body":{"type":"string","description":"Raw JSON body; overrides other fields if provided"}
@@ -498,6 +499,7 @@ func All() []mcp.ToolDef {
 					"envId":{"type":"string","description":"Target environment ID"},
 					"path":{"type":"string","description":"Output file path (auto-generated under workDir/screenshots/ if omitted)"},
 					"dir":{"type":"string","description":"Directory for auto-named screenshots (default: workDir/screenshots/)"},
+					"screenshotDir":{"type":"string","description":"Deprecated alias for dir"},
 					"format":{"type":"string","description":"Image format: 'png' (default) or 'jpeg'"},
 					"quality":{"type":"integer","description":"JPEG quality 0-100 (jpeg only)"},
 					"fullPage":{"type":"boolean","description":"Capture the full scrollable page"},
@@ -1053,16 +1055,39 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 	case "browser_command":
 		envID := str(p, "envId")
 		method := str(p, "method")
+		var cdpParams map[string]any
+		sessionID := str(p, "sessionId")
+		bodyProvided := false
+		if body := str(p, "body"); body != "" {
+			bodyProvided = true
+			var raw struct {
+				Method    string         `json:"method"`
+				Params    map[string]any `json:"params"`
+				SessionID string         `json:"sessionId"`
+			}
+			if err := json.Unmarshal([]byte(body), &raw); err != nil {
+				return "", fmt.Errorf("invalid body JSON: %w", err)
+			}
+			if raw.Method != "" {
+				method = raw.Method
+			}
+			if raw.Params != nil {
+				cdpParams = raw.Params
+			}
+			if raw.SessionID != "" {
+				sessionID = raw.SessionID
+			}
+		}
 		if envID == "" || method == "" {
 			return "", fmt.Errorf("envId and method are required")
 		}
-		var cdpParams map[string]any
-		if raw, ok := p["params"]; ok {
-			if m, ok := raw.(map[string]any); ok {
-				cdpParams = m
+		if !bodyProvided && cdpParams == nil {
+			if raw, ok := p["params"]; ok {
+				if m, ok := raw.(map[string]any); ok {
+					cdpParams = m
+				}
 			}
 		}
-		sessionID := str(p, "sessionId")
 		resp, err := mgr.BrowserCommand(envID, method, cdpParams, sessionID)
 		if err != nil {
 			return "", err
@@ -1403,7 +1428,7 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		}
 		opts := brosdk.ScreenshotOptions{
 			Path:     str(p, "path"),
-			Dir:      str(p, "dir"),
+			Dir:      firstStr(p, "dir", "screenshotDir"),
 			Format:   str(p, "format"),
 			Annotate: boolVal(p, "annotate"),
 			FullPage: boolVal(p, "fullPage"),
@@ -1760,6 +1785,10 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		if name == "" {
 			return "", fmt.Errorf("name is required")
 		}
+		path, err := scenePath(name)
+		if err != nil {
+			return "", err
+		}
 		scene, err := recorder.Get().Stop()
 		if err != nil {
 			return "", err
@@ -1771,7 +1800,6 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		if err := validateScene(scene); err != nil {
 			return "", err
 		}
-		path := filepath.Join(ScenesDir(), name+".json")
 		data, err := json.MarshalIndent(scene, "", "  ")
 		if err != nil {
 			return "", fmt.Errorf("marshal scene: %w", err)
@@ -1793,6 +1821,10 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		if name == "" {
 			return "", fmt.Errorf("name is required")
 		}
+		path, err := scenePath(name)
+		if err != nil {
+			return "", err
+		}
 		sceneRaw, ok := p["scene"]
 		if !ok {
 			return "", fmt.Errorf("scene is required")
@@ -1808,9 +1840,10 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		if err := validateScene(&scene); err != nil {
 			return "", err
 		}
-		path := filepath.Join(ScenesDir(), name+".json")
 		if _, err := os.Stat(path); err == nil {
 			return "", fmt.Errorf("scene already exists: %s", name)
+		} else if err != nil && !os.IsNotExist(err) {
+			return "", fmt.Errorf("check scene: %w", err)
 		}
 		// ensure description is carried over
 		if desc, ok := sceneRaw.(map[string]any)["description"].(string); ok {
@@ -1876,7 +1909,10 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		if name == "" {
 			return "", fmt.Errorf("name is required")
 		}
-		path := filepath.Join(ScenesDir(), name+".json")
+		path, err := scenePath(name)
+		if err != nil {
+			return "", err
+		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return "", fmt.Errorf("scene not found: %s", name)
@@ -1889,7 +1925,10 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		if name == "" {
 			return "", fmt.Errorf("name is required")
 		}
-		path := filepath.Join(ScenesDir(), name+".json")
+		path, err := scenePath(name)
+		if err != nil {
+			return "", err
+		}
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			return "", fmt.Errorf("scene not found: %s", name)
 		}
@@ -1926,7 +1965,10 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		if name == "" {
 			return "", fmt.Errorf("name is required")
 		}
-		path := filepath.Join(ScenesDir(), name+".json")
+		path, err := scenePath(name)
+		if err != nil {
+			return "", err
+		}
 		if err := os.Remove(path); err != nil {
 			return "", fmt.Errorf("delete scene: %w", err)
 		}
@@ -1943,6 +1985,7 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 // ---------- scene helpers ----------
 
 var scenesDir string
+var validSceneName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
 // SetScenesDir sets the directory for scene file storage (called from main.go).
 func SetScenesDir(dir string) { scenesDir = dir }
@@ -1953,6 +1996,13 @@ func ScenesDir() string {
 		scenesDir = "scenes"
 	}
 	return scenesDir
+}
+
+func scenePath(name string) (string, error) {
+	if !validSceneName.MatchString(name) {
+		return "", fmt.Errorf("invalid scene name %q: use letters, numbers, dot, underscore, or hyphen", name)
+	}
+	return filepath.Join(ScenesDir(), name+".json"), nil
 }
 
 func validateScene(s *recorder.Scene) error {
@@ -1976,16 +2026,19 @@ func replayScene(mgr *brosdk.Manager, p map[string]any) (string, error) {
 		return "", fmt.Errorf("name is required and envId must be set (via envId param or browser_select)")
 	}
 
-	path := filepath.Join(ScenesDir(), name+".json")
+	path, err := scenePath(name)
+	if err != nil {
+		return "", err
+	}
 	scene, err := recorder.LoadScene(path)
 	if err != nil {
 		return "", err
 	}
 
 	opts := recorder.ReplayOptions{
-		EnvID:            envID,
-		StopOnError:      boolVal(p, "stopOnError"),
-		ApplyHumanDelay:  true, // default on for safer replay
+		EnvID:           envID,
+		StopOnError:     boolVal(p, "stopOnError"),
+		ApplyHumanDelay: true, // default on for safer replay
 	}
 
 	if vars, ok := p["variables"].(map[string]any); ok {
@@ -2023,6 +2076,15 @@ func jsonFromParams(p map[string]any) string {
 func str(p map[string]any, key string) string {
 	if v, ok := p[key].(string); ok {
 		return v
+	}
+	return ""
+}
+
+func firstStr(p map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if v := str(p, key); v != "" {
+			return v
+		}
 	}
 	return ""
 }

@@ -24,17 +24,25 @@ import (
 
 // ---------- chromedp context management ----------
 
+const actionTimeout = 10 * time.Second
+
+func runAction(ctx context.Context, actions ...chromedp.Action) error {
+	actionCtx, cancel := context.WithTimeout(ctx, actionTimeout)
+	defer cancel()
+	return chromedp.Run(actionCtx, actions...)
+}
+
 // browserTab tracks chromedp resources for one browser environment.
 // tabCtx/tabCancel hold the active tab. Additional non-active tabs are
 // stored in tabs/tabCancels maps keyed by internal tab ID (e.g. "tab-1").
 type browserTab struct {
-	allocCtx    context.Context                // remote allocator context (shared by all tabs)
-	allocCancel context.CancelFunc             // cancels allocator (and all tabs)
-	tabCtx      context.Context                // active tab context
-	tabCancel   context.CancelFunc             // active tab cancel
-	tabs        map[string]context.Context     // non-active tabs: tabID → tab context
+	allocCtx    context.Context               // remote allocator context (shared by all tabs)
+	allocCancel context.CancelFunc            // cancels allocator (and all tabs)
+	tabCtx      context.Context               // active tab context
+	tabCancel   context.CancelFunc            // active tab cancel
+	tabs        map[string]context.Context    // non-active tabs: tabID → tab context
 	tabCancels  map[string]context.CancelFunc // non-active tabs: tabID → cancel func
-	nextTabID   int                             // monotonically increasing tab counter
+	nextTabID   int                           // monotonically increasing tab counter
 }
 
 // ensureBrowser returns the browserTab for envID, creating one if needed.
@@ -192,10 +200,10 @@ func (m *Manager) NewTab(envID string) (string, error) {
 
 // tabInfo holds metadata about an open tab.
 type tabInfo struct {
-	TabID string `json:"tabId"`
-	Title string `json:"title"`
-	URL   string `json:"url"`
-	IsActive bool `json:"isActive"`
+	TabID    string `json:"tabId"`
+	Title    string `json:"title"`
+	URL      string `json:"url"`
+	IsActive bool   `json:"isActive"`
 }
 
 // ListTabs returns information about all open tabs in the browser environment.
@@ -468,7 +476,7 @@ func (m *Manager) Click(envID, sessionID, selector string) error {
 	if err != nil {
 		return err
 	}
-	return chromedp.Run(tabCtx,
+	return runAction(tabCtx,
 		chromedp.ScrollIntoView(selector),
 		chromedp.Click(selector),
 	)
@@ -506,7 +514,7 @@ func (m *Manager) DblClick(envID, sessionID, selector string) error {
 	if err != nil {
 		return err
 	}
-	return chromedp.Run(tabCtx,
+	return runAction(tabCtx,
 		chromedp.ScrollIntoView(selector),
 		chromedp.DoubleClick(selector),
 	)
@@ -518,7 +526,7 @@ func (m *Manager) Focus(envID, sessionID, selector string) error {
 	if err != nil {
 		return err
 	}
-	return chromedp.Run(tabCtx,
+	return runAction(tabCtx,
 		chromedp.ScrollIntoView(selector),
 		chromedp.Focus(selector),
 	)
@@ -616,7 +624,7 @@ func (m *Manager) Type(envID, sessionID, selector, text string) error {
 	if err != nil {
 		return err
 	}
-	return chromedp.Run(tabCtx,
+	return runAction(tabCtx,
 		chromedp.ScrollIntoView(selector),
 		chromedp.Focus(selector),
 		chromedp.SendKeys(selector, text),
@@ -658,7 +666,7 @@ func (m *Manager) Fill(envID, sessionID, selector, text string) error {
 	if err != nil {
 		return err
 	}
-	return chromedp.Run(tabCtx,
+	return runAction(tabCtx,
 		chromedp.ScrollIntoView(selector),
 		chromedp.SetValue(selector, text),
 	)
@@ -1035,13 +1043,13 @@ func (m *Manager) UploadFile(envID, sessionID, selector string, files []string) 
 
 // ScreenshotOptions configures the screenshot.
 type ScreenshotOptions struct {
-	Path      string `json:"path,omitempty"`
-	Dir       string `json:"screenshotDir,omitempty"`
-	Format    string `json:"format,omitempty"`
-	Quality   int    `json:"quality,omitempty"`
-	Annotate  bool   `json:"annotate,omitempty"`
-	FullPage  bool   `json:"fullPage,omitempty"`
-	Clip      *struct {
+	Path     string `json:"path,omitempty"`
+	Dir      string `json:"screenshotDir,omitempty"`
+	Format   string `json:"format,omitempty"`
+	Quality  int    `json:"quality,omitempty"`
+	Annotate bool   `json:"annotate,omitempty"`
+	FullPage bool   `json:"fullPage,omitempty"`
+	Clip     *struct {
 		X, Y, Width, Height float64
 	} `json:"clip,omitempty"`
 }

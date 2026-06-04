@@ -4,7 +4,6 @@ package recorder
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -228,13 +227,17 @@ func TestPlayer_GuardFailure(t *testing.T) {
 	}
 
 	result := p.Replay(scene, ReplayOptions{EnvID: "env-1", StepDelay: 1 * time.Millisecond, StopOnError: false})
-	// Guard failure is soft — step still marked ok, but result has guardWarn annotation.
+	// Guard failure is soft: step stays ok and warning is structured.
 	sr := result.Steps[0]
 	if !sr.Ok {
 		t.Error("step should still be ok (guard failure is soft)")
 	}
-	if !strings.Contains(sr.Result, "guardWarn") {
-		t.Errorf("result should contain guardWarn, got: %s", sr.Result)
+	if sr.GuardWarn == "" {
+		t.Errorf("guard warning should be set, got: %+v", sr)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(sr.Result), &parsed); err != nil {
+		t.Fatalf("step result should remain valid JSON: %v", err)
 	}
 }
 
