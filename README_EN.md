@@ -18,6 +18,7 @@ so AI Agents (Claude, CodeBuddy, etc.) can directly control fingerprint browser 
 ## Feature Overview
 
 - Expose all BroSDK capabilities through 72 MCP Tools: SDK lifecycle, browser control, high-level browser actions, environment CRUD, **browser record-replay**
+- **Cookie Storage Callback**: SDK-level cookie interception via `mgr.OnCookies()` — cookie changes broadcast as SSE `cookies-event`
 - High-level browser operations powered by [chromedp](https://github.com/chromedp/chromedp) — click, type, fill, screenshot, PDF, no raw CDP required
 - Retain `browser_command` transparent CDP proxy for advanced/custom DevTools scenarios
 - Async tools deliver results via SSE events, with support for long-wait operations
@@ -64,8 +65,6 @@ Agent / MCP Client
 
 ## Prerequisites
 
-- Windows x64 (runtime; build works on any OS, macOS is fully supported via CGo)
-- Go 1.26+
 - **Windows** x64 / **macOS** arm64
 - Go 1.26+
 - brosdk native library — **auto-downloaded from GitHub Releases** on first run
@@ -458,6 +457,7 @@ data: {"code":100,"data":"{\"type\":\"browser-open-success\",\"reqId\":42,...}"}
 | `browser-close-success`   | 0    | Browser closed             |
 | `token-update-success`    | 0    | Token refreshed            |
 | `install-success`         | 0    | Core installation complete |
+| `cookies-event`           | 0    | SDK intercepted cookie storage/update |
 | Other                     | ≠0   | Error or warning           |
 
 SSE connections receive a `: ping` heartbeat every 15 seconds.
@@ -476,7 +476,7 @@ SSE connections receive a `: ping` heartbeat every 15 seconds.
 
 ## E2E Tests
 
-Test files are split into 8 files by feature area for easy focused runs:
+Test files are split into 11 files by feature area for easy focused runs:
 
 | File | Test Function | Coverage |
 |------|-------------|----------|
@@ -489,8 +489,8 @@ Test files are split into 8 files by feature area for easy focused runs:
 | `e2e_mouse_test.go` | `TestE2E_MouseInteraction` | dblclick/hover/hover_ref/find_click_text |
 | `e2e_scroll_test.go` | `TestE2E_ScrollAndScreenshot` | scroll/scroll_into_view/screenshot/PDF |
 | `e2e_drag_test.go` | `TestE2E_DragAndUpload` | drag/upload_file |
-| `e2e_tab_test.go` | `TestE2E_TabManagement` | new_tab/list_tabs/close_tab/get_html |
 | `e2e_agent_test.go` | `TestE2E_AgentFriendlyTools` | 7 agent-friendly tools (find_ref, wait, page_state, exists, dialog, fill_form, snapshot:interactiveOnly) |
+| `e2e_cookie_test.go` | `TestE2E_CookieCallback` | Cookie storage callback: built-in HTTP server sets cookies → close browser → verify callback data |
 | `e2e_record_test.go` | `TestE2E_RecordReplay_FullFlow` | record_start → ops → record_stop → scene_replay |
 | | `TestE2E_RecordReplay_VariableSubstitution` | Variable substitution: `{{username}}`/`{{password}}` |
 | | `TestE2E_RecordReplay_StopOnError` | stopOnError behaviour |
@@ -527,6 +527,7 @@ brosdk-mcp-go/
 ├── e2e_scroll_test.go             # E2E: scroll + screenshot + PDF
 ├── e2e_drag_test.go               # E2E: drag + file upload
 ├── e2e_agent_test.go              # E2E: agent-friendly tools
+├── e2e_cookie_test.go             # E2E: cookie storage callback
 ├── e2e_record_test.go             # E2E: record-replay full flow
 ├── e2e_tab_test.go                # E2E: tab management + get_html
 ├── libs/
@@ -573,6 +574,7 @@ brosdk-mcp-go/
 | **Pure GOOS Constraints**  | `//go:build windows` / `//go:build !windows`, no build tags   |
 | **SDK Singleton**          | Managed by `Manager` + `sync.RWMutex`                         |
 | **Async Callback Bridge**  | C `result_callback` → Go `emit()` → SSE Broadcast `sdk-event` |
+| **Cookie Callback Bridge** | C `cookies_storage_cb` → Go `emitCookie()` → SSE Broadcast `cookies-event` |
 | **chromedp Actions**       | Powered by `github.com/chromedp/chromedp` (v0.15.1), native Action types |
 | **AX Tree Ref Targeting**  | `browser_snapshot` → `backendDOMNodeId` → `browser_*_ref` precise targeting |
 | **CDP Connection Pool**    | WebSocket connections cached per `envId`, auto-reconnect on failure (one retry) |

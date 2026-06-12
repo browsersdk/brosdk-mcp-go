@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [v0.1.1] — 2026-06-12
+
+### Added
+
+- **Cookie Storage Callback**: Wire up `sdk_cookies_storage_cb_t` across the full chain — nativeLib interface → Windows syscall (cdecl trampoline) → macOS CGo callback bridge → `Manager.OnCookies()`/`emitCookie()` → SSE `cookies-event` broadcast. Consumers can register a callback via `mgr.OnCookies()` to receive cookie updates when the browser stores or modifies cookies.
+- **E2E Test**: Added `e2e_cookie_test.go` with `TestE2E_CookieCallback` — built-in HTTP server sets cookies via `Set-Cookie` headers and `document.cookie`, verifying the callback fires on browser close with correct cookie payload (`CookiesEvent` type with `name`, `value`, `domain`, `path`, etc.).
+
+### Removed
+
+- Dead `resolveLibPath` function from `main.go` (unused since auto-download was introduced).
+
+---
+
 ## [Unreleased] — v0.1.0
 
 ### Added

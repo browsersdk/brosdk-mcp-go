@@ -8,7 +8,7 @@
 | 组件 | 选型 | 说明 |
 |------|------|------|
 | HTTP Server | `net/http` 标准库 | SSE + JSON-RPC，不引入框架 |
-| MCP Transport | 仅 SSE（`GET /sse` + `POST /message`） | 符合 spec 2024-11-05 |
+| MCP Transport | SSE + Streamable HTTP（`POST/GET/DELETE /mcp`） | SSE 符合 spec 2024-11-05；Streamable HTTP 符合 2025-03-26 |
 | FFI | **Windows**: `syscall.LazyDLL`（无 CGo）<br>**macOS**: CGo + `dlopen`/`dlsym` | 平台原生动态库加载 |
 | 浏览器操作 | `chromedp` v0.15.1 | 高层 API：click/type/screenshot 等 |
 | CDP 代理 | `gorilla/websocket` | 透明转发到浏览器 DevTools |
@@ -23,10 +23,10 @@ brosdk-mcp-go/
 ├── go.mod
 ├── README.md / README_EN.md    # 项目说明 + API 参考
 ├── docs/
-│   ├── tools-reference.md      # 50 MCP Tool API 参考
+│   ├── tools-reference.md      # 72 MCP Tool API 参考
 │   └── ARCHITECTURE.md         # 本文档
 ├── e2e_test.go                 # E2E 共享基础设施
-├── e2e_*_test.go               # 10 个按功能拆分的 E2E 测试文件（含 agent 工具）
+├── e2e_*_test.go               # 11 个按功能拆分的 E2E 测试文件（含 agent 工具、cookie 回调）
 ├── libs/
 │   ├── brosdk.h                       # C 头文件（参考）
 │   ├── windows-x64/brosdk.dll         # Windows x64 原生库
@@ -44,15 +44,17 @@ brosdk-mcp-go/
 │   │   ├── http.go             # HTTP 客户端（fetchUserSig API）
 │   │   ├── cdp.go              # CDP WebSocket 代理（windows || darwin）
 │   │   ├── cdp_unsupported.go  # CDP 桩（其他平台）
-│   │   ├── actions.go          # chromedp 高层浏览器操作（43 个 action + 6 agent-friendly 工具）
+│   │   ├── actions.go          # chromedp 高层浏览器操作（49 个 action + 6 agent-friendly 工具）
 │   │   └── actions_unsupported.go # actions 桩
 │   ├── config/
 │   │   └── config.go           # config.local.json → config.json 加载
 │   ├── mcp/
 │   │   ├── server.go           # SSE server + session 管理 + JSON-RPC dispatch
-│   │   └── inspector.go        # 内嵌 MCP Inspector Web UI（自包含 HTML）
+│   │   ├── streamable.go       # Streamable HTTP transport（MCP 2025-03-26）
+│   │   ├── inspector.go        # go:embed 加载器
+│   │   └── inspector.html      # 内嵌 MCP Inspector Web UI（独立 HTML 文件）
 │   └── tools/
-│       └── tools.go            # 65 Tool 定义 + handler dispatch + Recorder hook
+│       └── tools.go            # 72 Tool 定义 + handler dispatch + Recorder hook
 │   └── recorder/
 │       ├── recorder.go         # 录制单例：start/stop/capture/sanitize + WaitFor 推断 + HumanDelay 捕获
 │       ├── player.go           # 回放引擎：步骤执行 + WaitFor 守卫 + 变量替换 + human delay
@@ -63,7 +65,9 @@ brosdk-mcp-go/
 │       └── guard_test.go       # WaitFor/HumanDelay 单元测试
 ```
 
-## MCP Transport：仅 SSE
+## MCP Transport：SSE + Streamable HTTP
+
+### SSE（传统，spec 2024-11-05）
 
 ```
 GET  /inspector  → 内嵌 MCP Inspector Web UI（工具浏览 + 调用 + SSE 事件）
@@ -77,6 +81,16 @@ POST /message    → 客户端发送 JSON-RPC 请求
 3. 服务端处理后通过 SSE 推送 `event: message\ndata: {...}`
 4. SDK 异步回调通过 SSE `sdk-event` 推送给所有 session
 5. SSE 每 15s 发送 `: ping` 心跳
+
+### Streamable HTTP（spec 2025-03-26）
+
+```
+POST /mcp  → JSON-RPC 请求（Content-Type 协商：application/json 或 text/event-stream）
+GET  /mcp  → SSE 流（服务端主动推送事件）
+DELETE /mcp → 终止会话
+```
+
+通过 `Mcp-Session-Id` header 管理会话。传统 `/sse` + `/message` 端点保留向后兼容。
 
 ## 异步回调桥接
 
@@ -92,6 +106,20 @@ Native result_callback (C)
 - `sdk_malloc` / `sdk_free`：所有 SDK 分配的 `char*` 必须用 `sdk_free` 释放
 - 异步操作（`browser_open`、`browser_close`、`token_update`）返回 `reqId`，最终结果通过 `result_callback` 推送
 - 单例：`Manager` + `sync.RWMutex` 管理
+
+## Cookie Storage 回调
+
+```
+SDK cookies_storage_cb (C)
+        ↓ RegisterCookiesStorageCB
+  Go channel (chan CookiesEvent)
+        ↓ Manager.emitCookie()
+  SSE Broadcast "cookies-event" → 所有连接的 MCP Client
+```
+
+浏览器存储或修改 cookie 时，SDK 通过 `sdk_cookies_storage_cb_t` 回调通知。
+回调数据包含 cookie 数组（`name`、`value`、`domain`、`path`、`expirationDate` 等）。
+通常在浏览器关闭时触发。
 
 ## Native 绑定方案
 
@@ -226,9 +254,10 @@ Guard 失败处理：注入 `guardWarn` 注解（软错误），不中断回放�
 | **异步工具返回 reqId** | `browser_open` 等立即返回，结果通过 SSE 事件推送 |
 | **chromedp 高层 API** | 减少 LLM 手写 CDP 命令，覆盖率 97.7% 的 E2E 测试 |
 | **selector + ref 双定位** | 分离工具而非合并参数，工作流清晰，无破坏性 |
-| **仅 SSE transport** | 不需要 stdio，AI Agent 通过 HTTP 连接更灵活 |
+| **SSE + Streamable HTTP transport** | SSE 向后兼容；Streamable HTTP 支持 MCP 2025-03-26，AI Agent 通过 HTTP 连接更灵活 |
 | **录制回放 Hook 模式** | Handler 层自动捕获，Dispatch 与 Player 共享同一 switch，零代码重复 |
 | **record_stop 自动保存** | 简化 Agent 工作流，减少 tool call 次数，避免步骤数组在网络间传输 |
 | **WaitFor 守卫代替盲等** | 条件驱动等待（readyState/exists/wait）替代固定 sleep，解决 AJAX/SPA 可靠性问题 |
 | **HumanDelay 可选模拟** | 录制时捕获人类节奏，回放时可开关（cap 3s），回归测试 vs 演示场景灵活切换 |
 | **Dialog 页面侧捕获** | JS override alert/confirm/prompt → `__wbDialogMsg`，避免 CDP 事件时序竞争 |
+| **Cookie Storage 回调** | `sdk_cookies_storage_cb_t` 全链路桥接，浏览器 cookie 变更通过 SSE `cookies-event` 实时推送 |

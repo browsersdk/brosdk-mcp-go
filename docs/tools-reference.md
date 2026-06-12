@@ -2,6 +2,8 @@
 
 > 72 tools, 5 categories + recorder/scene (9 tools). All async tools return `reqId` immediately; results delivered via SSE `sdk-event`.
 >
+> **Cookie Storage Callback**: The SDK also fires a separate `cookies-event` (via SSE) when the browser stores or modifies cookies. This is independent of tool calls — register via `mgr.OnCookies()` in Go code.
+>
 > **envId optional**: Most Browser Actions support `browser_select`-based auto-env resolution. Only `browser_open`, `browser_close`, `browser_select`, `browser_command`, and `env_*` tools require explicit `envId`.
 
 ## 1. SDK Info (3 tools)

@@ -18,6 +18,7 @@
 ## 功能概览
 
 - 通过 72 个 MCP Tool 暴露 BroSDK 全部能力：SDK 生命周期、浏览器控制、浏览器高级操作、环境 CRUD、**浏览器录制回放**
+- **Cookie Storage 回调**：SDK 级别 cookie 拦截，`mgr.OnCookies()` 注册回调，cookie 变更通过 SSE `cookies-event` 实时广播
 - 基于 [chromedp](https://github.com/chromedp/chromedp) 的高层浏览器操作——点击、输入、截图、PDF 等，无需手写 CDP 命令
 - 保留 `browser_command` 透明 CDP 代理，支持所有 DevTools 命令的高级/自定义场景
 - **录制回放**：`record_start` → 操作（自动捕获）→ `record_stop` 自动保存场景，`scene_replay` 一键回放，支持 `{{变量}}` 替换
@@ -458,6 +459,7 @@ data: {"code":100,"data":"{\"type\":\"browser-open-success\",\"reqId\":42,...}"}
 | `browser-close-success`   | 0    | 浏览器已关闭        |
 | `token-update-success`    | 0    | Token 刷新成功      |
 | `install-success`         | 0    | 内核安装完成        |
+| `cookies-event`           | 0    | SDK 拦截到 cookie 存储/变更 |
 | 其他                      | 非 0 | 错误或警告          |
 
 SSE 连接每 15 秒发送 `: ping` 心跳保持连接。
@@ -476,7 +478,7 @@ SSE 连接每 15 秒发送 `: ping` 心跳保持连接。
 
 ## E2E 测试
 
-测试文件按功能拆分为 9 个文件，方便单独运行：
+测试文件按功能拆分为 11 个文件，方便单独运行：
 
 | 文件 | 测试函数 | 覆盖内容 |
 |------|---------|---------|
@@ -489,6 +491,8 @@ SSE 连接每 15 秒发送 `: ping` 心跳保持连接。
 | `e2e_mouse_test.go` | `TestE2E_MouseInteraction` | dblclick/hover/hover_ref/find_click_text |
 | `e2e_scroll_test.go` | `TestE2E_ScrollAndScreenshot` | scroll/scroll_into_view/screenshot/PDF |
 | `e2e_drag_test.go` | `TestE2E_DragAndUpload` | drag/upload_file |
+| `e2e_agent_test.go` | `TestE2E_AgentFriendlyTools` | 7 个 agent-friendly 工具（find_ref、wait、page_state、exists、dialog、fill_form、snapshot:interactiveOnly） |
+| `e2e_cookie_test.go` | `TestE2E_CookieCallback` | cookie storage 回调：内建 HTTP 服务设 cookie → 关闭浏览器 → 验证回调数据 |
 | `e2e_tab_test.go` | `TestE2E_TabManagement` | new_tab/list_tabs/close_tab/get_html |
 | `e2e_record_test.go` | `TestE2E_RecordReplay_FullFlow` | record_start → 操作 → record_stop → scene_replay |
 | | `TestE2E_RecordReplay_VariableSubstitution` | 变量替换：`{{username}}`/`{{password}}` |
@@ -519,8 +523,17 @@ brosdk-mcp-go/
 │   ├── ARCHITECTURE.md             # 架构设计 + 技术决策
 │   └── tools-reference.md          # 72 个 MCP Tool API 参考
 ├── e2e_test.go                    # E2E 共享基础设施（类型、fixture、helper）
-├── e2e_record_test.go            # E2E: 录制回放完整流程
-├── e2e_tab_test.go               # E2E: Tab 管理 + get_html
+├── e2e_basic_test.go              # E2E: SDK 基础 + CDP 表单测试
+├── e2e_snapshot_test.go           # E2E: snapshot + click_ref 工作流
+├── e2e_form_test.go               # E2E: 表单元素交互
+├── e2e_keyboard_test.go           # E2E: 键盘交互
+├── e2e_mouse_test.go              # E2E: 鼠标交互
+├── e2e_scroll_test.go             # E2E: 滚动 + 截图 + PDF
+├── e2e_drag_test.go               # E2E: 拖拽 + 文件上传
+├── e2e_agent_test.go              # E2E: agent-friendly 工具
+├── e2e_cookie_test.go             # E2E: cookie storage 回调
+├── e2e_record_test.go             # E2E: 录制回放完整流程
+├── e2e_tab_test.go                # E2E: Tab 管理 + get_html
 ├── libs/
 │   ├── brosdk.h                    # C 头文件（参考）
 │   ├── windows-x64/
@@ -565,6 +578,7 @@ brosdk-mcp-go/
 | **纯 GOOS 约束**    | `//go:build windows` / `//go:build !windows`，无 build tag       |
 | **SDK 单例**        | `Manager` + `sync.RWMutex` 管理                                  |
 | **异步回调桥接**    | C `result_callback` → Go `emit()` → SSE Broadcast `sdk-event`    |
+| **Cookie 回调桥接** | C `cookies_storage_cb` → Go `emitCookie()` → SSE Broadcast `cookies-event` |
 | **chromedp 操作**   | 基于 `github.com/chromedp/chromedp`（v0.15.1），使用原生 Action 类型 |
 | **AX Tree ref 定位**| `browser_snapshot` → `backendDOMNodeId` → `browser_*_ref` 精准定位 |
 | **CDP 连接池**      | 按 `envId` 缓存 WebSocket 连接，断线自动重连（最多一次）          |
