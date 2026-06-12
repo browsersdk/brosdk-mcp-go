@@ -90,9 +90,9 @@ func TestE2E_KeyboardInteraction(t *testing.T) {
 		t.Logf("keyboard_type ✓ value=%s", val)
 	})
 
-	// ── 3. browser_keyboard_insert_text ──
+	// ── 3. browser_insert_text ──
 	t.Run("keyboard_insert_text", func(t *testing.T) {
-		_, err := f.client.callTool("browser_keyboard_insert_text", map[string]any{
+		_, err := f.client.callTool("browser_insert_text", map[string]any{
 			"envId": envID, "text": "Insert", "sessionId": sessionID,
 		})
 		if err != nil {
@@ -134,7 +134,7 @@ func TestE2E_KeyboardInteraction(t *testing.T) {
 		time.Sleep(200 * time.Millisecond)
 
 		// Type 'a' while Shift is held → should log "kd:Shift" then "kd:a"
-		_, err = f.client.callTool("browser_keyboard_insert_text", map[string]any{
+		_, err = f.client.callTool("browser_insert_text", map[string]any{
 			"envId": envID, "text": "a", "sessionId": sessionID,
 		})
 		if err != nil {

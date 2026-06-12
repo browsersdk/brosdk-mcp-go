@@ -116,10 +116,11 @@ func (s *Server) Broadcast(eventType, data string) {
 	msg := fmt.Sprintf("event: %s\ndata: %s\n\n", eventType, data)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	for _, c := range s.clients {
+	for id, c := range s.clients {
 		select {
 		case c.ch <- msg:
 		default:
+			log.Printf("mcp: sse broadcast dropped event=%s for client %d (channel full)", eventType, id)
 		}
 	}
 }

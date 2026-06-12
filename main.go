@@ -111,15 +111,33 @@ func main() {
 	go func() {
 		<-stop
 		log.Println("shutting down...")
+
+		// 1. Stop accepting new HTTP requests; in-flight requests will
+		//    drain until the context expires or they finish naturally.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		go func() {
+			if err := httpSrv.Shutdown(ctx); err != nil {
+				log.Printf("http server shutdown error: %v", err)
+			}
+		}()
+
+		// 2. Tear down chromedp allocators + tabs.  This cancels every
+		//    tab context, so any in-flight tool calls return quickly
+		//    with "context canceled" instead of hanging on the browser.
+		mgr.CloseAllBrowsers()
+		log.Println("chromedp connections closed")
+
+		// 3. Close raw CDP proxy WebSocket connections.
+		brosdk.CloseCDP()
+		log.Println("CDP connections closed")
+
+		// 4. Shutdown the native SDK singleton (must be last — other
+		//    layers depend on it).
 		if mgr.Loaded() {
 			if err := mgr.Shutdown(); err != nil {
 				log.Printf("sdk shutdown error: %v", err)
 			}
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := httpSrv.Shutdown(ctx); err != nil {
-			log.Printf("http server shutdown error: %v", err)
 		}
 	}()
 

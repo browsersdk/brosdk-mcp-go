@@ -81,7 +81,7 @@ func (m *Manager) KeyboardType(envID, sessionID, text string) error {
 }
 
 func (m *Manager) KeyboardInsertText(envID, sessionID, text string) error {
-	return sdkError("browser_keyboard_insert_text is only supported on Windows")
+	return sdkError("browser_insert_text is only supported on Windows")
 }
 
 func (m *Manager) KeyDown(envID, sessionID, key string) error {

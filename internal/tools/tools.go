@@ -195,7 +195,7 @@ func All() []mcp.ToolDef {
 		},
 		{
 			Name:        "browser_type",
-			Description: "Type text into an element matching a CSS selector (appends to existing value, fires input/change events).",
+			Description: "Type text into an element matching a CSS selector (appends to existing value, fires input/change events). Use browser_fill to replace existing content instead of appending.",
 			InputSchema: schema(`{
 				"type":"object",
 				"required":["selector","text"],
@@ -209,7 +209,7 @@ func All() []mcp.ToolDef {
 		},
 		{
 			Name:        "browser_type_ref",
-			Description: "Type text into an element identified by its accessibility ref (backendNodeId from browser_snapshot).",
+			Description: "Type text into an element identified by its accessibility ref (appends to existing value). Use browser_fill_ref to replace existing content instead of appending.",
 			InputSchema: schema(`{
 				"type":"object",
 				"required":["ref","text"],
@@ -223,7 +223,7 @@ func All() []mcp.ToolDef {
 		},
 		{
 			Name:        "browser_fill",
-			Description: "Clear an input field and type new text (fires input + change events).",
+			Description: "Clear an input field and set new text (fires input + change events). Use this instead of browser_type when you want to replace existing content.",
 			InputSchema: schema(`{
 				"type":"object",
 				"required":["selector","text"],
@@ -237,7 +237,7 @@ func All() []mcp.ToolDef {
 		},
 		{
 			Name:        "browser_fill_ref",
-			Description: "Clear an input field (identified by ref) and type new text. Ref is the backendNodeId from browser_snapshot.",
+			Description: "Clear an input field (identified by ref) and set new text (fires input + change events). Use this instead of browser_type_ref when you want to replace existing content.",
 			InputSchema: schema(`{
 				"type":"object",
 				"required":["ref","text"],
@@ -277,7 +277,7 @@ func All() []mcp.ToolDef {
 		},
 		{
 			Name:        "browser_keyboard_type",
-			Description: "Dispatch char-level key events for each character (use when a focused element needs character-by-character input).",
+			Description: "Dispatch char-level keyDown/keyUp events for each character. Prefer browser_type or browser_fill for form inputs — use this only when a site specifically requires character-by-character keyboard events.",
 			InputSchema: schema(`{
 				"type":"object",
 				"required":["text"],
@@ -290,7 +290,7 @@ func All() []mcp.ToolDef {
 		},
 		{
 			Name:        "browser_insert_text",
-			Description: "Insert text via Input.insertText (preferred for text input into a focused field).",
+			Description: "Insert text via Input.insertText into the currently focused field. Use this when no selector/ref is available and the target element is already focused; otherwise prefer browser_type or browser_fill.",
 			InputSchema: schema(`{
 				"type":"object",
 				"required":["text"],
@@ -303,7 +303,7 @@ func All() []mcp.ToolDef {
 		},
 		{
 			Name:        "browser_key_down",
-			Description: "Send a keyDown event for a specific key. Pair with browser_key_up for modifiers.",
+			Description: "Send a keyDown event for a specific key. Mainly for holding modifier keys (Shift, Control, Alt) while performing other actions. Use browser_press_key for simple key presses.",
 			InputSchema: schema(`{
 				"type":"object",
 				"required":["key"],
@@ -316,7 +316,7 @@ func All() []mcp.ToolDef {
 		},
 		{
 			Name:        "browser_key_up",
-			Description: "Send a keyUp event for a specific key.",
+			Description: "Send a keyUp event for a specific key. Pair with browser_key_down to release modifier keys held during other actions.",
 			InputSchema: schema(`{
 				"type":"object",
 				"required":["key"],
@@ -559,7 +559,7 @@ func All() []mcp.ToolDef {
 		},
 		{
 			Name:        "browser_get_text",
-			Description: "Return the visible text content of an element matched by a CSS selector.",
+			Description: "Return the visible text content of an element matched by a CSS selector. Use for labels, paragraphs, headings. Use browser_get_value for input/select field values.",
 			InputSchema: schema(`{
 				"type":"object",
 				"required":["selector"],
@@ -572,7 +572,7 @@ func All() []mcp.ToolDef {
 		},
 		{
 			Name:        "browser_get_value",
-			Description: "Return the value attribute of an input element matched by a CSS selector.",
+			Description: "Return the value attribute of an input/select/textarea element matched by a CSS selector. Use this for form fields; use browser_get_text for non-input elements.",
 			InputSchema: schema(`{
 				"type":"object",
 				"required":["selector"],

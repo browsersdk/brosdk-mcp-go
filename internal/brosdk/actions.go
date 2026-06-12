@@ -24,7 +24,10 @@ import (
 
 // ---------- chromedp context management ----------
 
-const actionTimeout = 10 * time.Second
+const (
+	actionTimeout  = 10 * time.Second
+	captureTimeout = 30 * time.Second // longer timeout for screenshot / PDF
+)
 
 func runAction(ctx context.Context, actions ...chromedp.Action) error {
 	actionCtx, cancel := context.WithTimeout(ctx, actionTimeout)
@@ -54,13 +57,18 @@ func (m *Manager) ensureBrowser(envID string) (*browserTab, error) {
 	m.mu.RUnlock()
 
 	// Check cached entry: if the allocator context is already done, discard it.
+	// Hold write lock for the entire cleanup to prevent races with concurrent
+	// callers (e.g. two Navigate calls seeing the same stale bt).
 	if bt != nil && bt.allocCtx.Err() != nil {
-		m.closeAllTabsLocked(bt)
-		if bt.allocCancel != nil {
-			bt.allocCancel()
-		}
 		m.mu.Lock()
-		delete(m.browsers, envID)
+		// Re-check under lock — another goroutine may have cleaned up already.
+		if bt2 := m.browsers[envID]; bt2 != nil && bt2.allocCtx.Err() != nil {
+			m.closeAllTabsLocked(bt2)
+			if bt2.allocCancel != nil {
+				bt2.allocCancel()
+			}
+			delete(m.browsers, envID)
+		}
 		m.mu.Unlock()
 		bt = nil
 	}
@@ -100,6 +108,8 @@ func (m *Manager) ensureTab(envID string) (context.Context, error) {
 	if err != nil {
 		return nil, err
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if bt.tabCtx != nil {
 		return bt.tabCtx, nil
 	}
@@ -157,15 +167,6 @@ func (m *Manager) CloseTab(envID, tabID string) error {
 }
 
 const activeTabSentinel = "__active__"
-
-// closeActiveTab closes the active tab without error checking.
-func (m *Manager) closeActiveTab(bt *browserTab) {
-	if bt.tabCancel != nil {
-		bt.tabCancel()
-	}
-	bt.tabCtx = nil
-	bt.tabCancel = nil
-}
 
 // newTabID generates a unique internal tab ID.
 func (bt *browserTab) newTabID() string {
@@ -421,14 +422,19 @@ func (m *Manager) Navigate(envID, url string) (*NavigateResult, error) {
 		return nil, err
 	}
 
-	// Close old tab if any
+	// Atomically swap tab context under lock: cancel old, create new.
+	// This prevents races with concurrent Navigate calls or other methods
+	// that read/modify bt.tabCtx (ensureTab, NewTab, CloseTab, etc.).
+	m.mu.Lock()
 	if bt.tabCancel != nil {
 		bt.tabCancel()
 	}
 	bt.tabCtx, bt.tabCancel = chromedp.NewContext(bt.allocCtx)
+	tabCtx := bt.tabCtx
+	m.mu.Unlock()
 
 	var targetID string
-	err = chromedp.Run(bt.tabCtx,
+	err = chromedp.Run(tabCtx,
 		chromedp.Navigate(url),
 		chromedp.WaitReady("body"),
 		chromedp.ActionFunc(func(ctx context.Context) error {
@@ -661,6 +667,7 @@ func (m *Manager) TypeRef(envID, sessionID, ref, text string) error {
 }
 
 // Fill clears the input and types new text.
+// Dispatches input + change events so React/Vue/Angular detect the change.
 func (m *Manager) Fill(envID, sessionID, selector, text string) error {
 	tabCtx, err := m.ensureTab(envID)
 	if err != nil {
@@ -669,10 +676,16 @@ func (m *Manager) Fill(envID, sessionID, selector, text string) error {
 	return runAction(tabCtx,
 		chromedp.ScrollIntoView(selector),
 		chromedp.SetValue(selector, text),
+		chromedp.Evaluate(fmt.Sprintf(
+			`(function(){var el=document.querySelector(%q);`+
+				`if(el){el.dispatchEvent(new Event('input',{bubbles:true}));`+
+				`el.dispatchEvent(new Event('change',{bubbles:true}))}})()`,
+			selector), nil),
 	)
 }
 
 // FillRef clears the input (by ref) and types new text.
+// Dispatches input + change events so React/Vue/Angular detect the change.
 func (m *Manager) FillRef(envID, sessionID, ref, text string) error {
 	tabCtx, err := m.ensureTab(envID)
 	if err != nil {
@@ -693,7 +706,19 @@ func (m *Manager) FillRef(envID, sessionID, ref, text string) error {
 			if err := chromedp.ScrollIntoView([]cdp.NodeID{nid}, chromedp.ByNodeID).Do(ctx); err != nil {
 				return err
 			}
-			return chromedp.SetValue([]cdp.NodeID{nid}, text, chromedp.ByNodeID).Do(ctx)
+			if err := chromedp.SetValue([]cdp.NodeID{nid}, text, chromedp.ByNodeID).Do(ctx); err != nil {
+				return err
+			}
+			// Dispatch input + change events via CallFunctionOn so that
+			// React/Vue/Angular detect the programmatic value change.
+			obj, err := cdpdom.ResolveNode().WithBackendNodeID(backendID).Do(ctx)
+			if err != nil {
+				return err
+			}
+			_, _, err = runtime.CallFunctionOn(
+				`function(){this.dispatchEvent(new Event('input',{bubbles:true}));this.dispatchEvent(new Event('change',{bubbles:true}))}`,
+			).WithObjectID(obj.ObjectID).Do(ctx)
+			return err
 		}),
 	)
 }
@@ -807,6 +832,7 @@ func (m *Manager) KeyUp(envID, sessionID, key string) error {
 }
 
 // SelectOption sets the value of a <select> element.
+// Dispatches a change event so React/Vue/Angular detect the selection.
 func (m *Manager) SelectOption(envID, sessionID, selector, value string) error {
 	tabCtx, err := m.ensureTab(envID)
 	if err != nil {
@@ -815,12 +841,16 @@ func (m *Manager) SelectOption(envID, sessionID, selector, value string) error {
 	return chromedp.Run(tabCtx,
 		chromedp.ScrollIntoView(selector),
 		chromedp.SetValue(selector, value),
+		chromedp.Evaluate(fmt.Sprintf(
+			`(function(){var el=document.querySelector(%q);`+
+				`if(el){el.dispatchEvent(new Event('change',{bubbles:true}))}})()`,
+			selector), nil),
 	)
 }
 
 // SelectOptionRef sets the value of a <select> element by its accessibility ref.
-// Uses CDP ResolveNode + CallFunctionOn to set .value and dispatch change event,
-// since SetValue by NodeID does not reliably fire the change event for <select>.
+// Uses CDP ResolveNode + CallFunctionOn to set .value and dispatch input + change events,
+// since SetValue by NodeID does not reliably fire these events for <select>.
 func (m *Manager) SelectOptionRef(envID, sessionID, ref, value string) error {
 	tabCtx, err := m.ensureTab(envID)
 	if err != nil {
@@ -846,7 +876,7 @@ func (m *Manager) SelectOptionRef(envID, sessionID, ref, value string) error {
 				return err
 			}
 			_, _, err = runtime.CallFunctionOn(
-				fmt.Sprintf("function(){this.value=%q;this.dispatchEvent(new Event('change',{bubbles:true}))}", value),
+				fmt.Sprintf("function(){this.value=%q;this.dispatchEvent(new Event('input',{bubbles:true}));this.dispatchEvent(new Event('change',{bubbles:true}))}", value),
 			).WithObjectID(obj.ObjectID).Do(ctx)
 			return err
 		}),
@@ -1061,6 +1091,10 @@ func (m *Manager) Screenshot(envID, sessionID string, opts ScreenshotOptions) (s
 		return "", err
 	}
 
+	// Apply capture timeout so a stuck page doesn't hang indefinitely.
+	ctx, cancel := context.WithTimeout(tabCtx, captureTimeout)
+	defer cancel()
+
 	format := opts.Format
 	if format == "" {
 		format = "png"
@@ -1073,9 +1107,9 @@ func (m *Manager) Screenshot(envID, sessionID string, opts ScreenshotOptions) (s
 		if quality <= 0 {
 			quality = 90
 		}
-		err = chromedp.Run(tabCtx, chromedp.FullScreenshot(&buf, quality))
+		err = chromedp.Run(ctx, chromedp.FullScreenshot(&buf, quality))
 	} else if opts.Clip != nil {
-		err = chromedp.Run(tabCtx,
+		err = chromedp.Run(ctx,
 			chromedp.ActionFunc(func(ctx context.Context) error {
 				pfmt := page.CaptureScreenshotFormatPng
 				if format == "jpeg" {
@@ -1103,7 +1137,7 @@ func (m *Manager) Screenshot(envID, sessionID string, opts ScreenshotOptions) (s
 		)
 	} else {
 		if format == "jpeg" {
-			err = chromedp.Run(tabCtx,
+			err = chromedp.Run(ctx,
 				chromedp.ActionFunc(func(ctx context.Context) error {
 					b, err := page.CaptureScreenshot().
 						WithFormat(page.CaptureScreenshotFormatJpeg).
@@ -1117,7 +1151,7 @@ func (m *Manager) Screenshot(envID, sessionID string, opts ScreenshotOptions) (s
 				}),
 			)
 		} else {
-			err = chromedp.Run(tabCtx, chromedp.CaptureScreenshot(&buf))
+			err = chromedp.Run(ctx, chromedp.CaptureScreenshot(&buf))
 		}
 	}
 	if err != nil {
@@ -1131,7 +1165,9 @@ func (m *Manager) Screenshot(envID, sessionID string, opts ScreenshotOptions) (s
 		if dir == "" {
 			dir = filepath.Join(m.workDir, "screenshots")
 		}
-		os.MkdirAll(dir, 0755)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return "", fmt.Errorf("create screenshot dir: %w", err)
+		}
 		outPath = filepath.Join(dir, fmt.Sprintf("screenshot.%s", format))
 		for i := 1; fileExists(outPath); i++ {
 			outPath = filepath.Join(dir, fmt.Sprintf("screenshot_%d.%s", i, format))
@@ -1153,8 +1189,12 @@ func (m *Manager) PDF(envID, sessionID, path string) (string, error) {
 		return "", err
 	}
 
+	// Apply capture timeout so a stuck page doesn't hang indefinitely.
+	ctx, cancel := context.WithTimeout(tabCtx, captureTimeout)
+	defer cancel()
+
 	var buf []byte
-	err = chromedp.Run(tabCtx,
+	err = chromedp.Run(ctx,
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			b, _, err := page.PrintToPDF().
 				WithPrintBackground(true).
@@ -1178,7 +1218,9 @@ func (m *Manager) PDF(envID, sessionID, path string) (string, error) {
 	if !strings.HasSuffix(outPath, ".pdf") {
 		outPath += ".pdf"
 	}
-	os.MkdirAll(filepath.Dir(outPath), 0755)
+	if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
+		return "", fmt.Errorf("create pdf dir: %w", err)
+	}
 
 	if err := os.WriteFile(outPath, buf, 0644); err != nil {
 		return "", fmt.Errorf("write pdf: %w", err)

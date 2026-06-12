@@ -100,9 +100,10 @@ func fetchBrowserWSEndpoint(host string, port int) (string, error) {
 // ---------- CDP WebSocket client ----------
 
 var (
-	cdpMu       sync.Mutex
-	cdpNextID   int
-	cdpConns    = map[string]*cdpConn{} // envID → pooled connection
+	cdpMu      sync.Mutex
+	cdpNextID  int
+	cdpConns   = map[string]*cdpConn{}  // envID → pooled connection
+	cdpDialing = map[string]chan struct{}{} // envID → signal chan for in-flight dial
 )
 
 type cdpConn struct {
@@ -183,29 +184,69 @@ func (m *Manager) BrowserCommand(envID, method string, params map[string]any, se
 }
 
 // getOrDial returns a pooled WebSocket connection, creating one if needed.
+//
+// If two goroutines call getOrDial concurrently for the same envID, only one
+// performs the dial; the other waits and reuses the result.  This prevents
+// connection leaks where a second dial overwrites the first in the pool,
+// leaving the original connection orphaned with its readLoop still running.
 func (m *Manager) getOrDial(envID, wsURL string) (*cdpConn, error) {
 	cdpMu.Lock()
-	conn, ok := cdpConns[envID]
-	cdpMu.Unlock()
-	if ok {
+
+	// Fast path: pooled connection exists.
+	if conn, ok := cdpConns[envID]; ok {
+		cdpMu.Unlock()
 		return conn, nil
 	}
 
+	// Another goroutine is already dialing for this envID — wait for it.
+	if ch, ok := cdpDialing[envID]; ok {
+		cdpMu.Unlock()
+		<-ch // unblocks when the dialer finishes (success or failure)
+		cdpMu.Lock()
+		conn := cdpConns[envID]
+		cdpMu.Unlock()
+		if conn != nil {
+			return conn, nil
+		}
+		return nil, fmt.Errorf("concurrent cdp dial failed for env %q", envID)
+	}
+
+	// This goroutine wins the dial race.  Register a signal channel so
+	// concurrent callers wait instead of dialing their own connections.
+	sig := make(chan struct{})
+	cdpDialing[envID] = sig
+	cdpMu.Unlock()
+
+	// Dial without holding cdpMu (network I/O can block).
 	ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+
+	cdpMu.Lock()
+	delete(cdpDialing, envID)
 	if err != nil {
+		cdpMu.Unlock()
+		close(sig) // wake waiters — they will see no conn and return error
 		return nil, fmt.Errorf("cdp dial %s: %w", wsURL, err)
 	}
 
-	conn = &cdpConn{
+	// Double-check: while we were dialing, someone else may have stored
+	// a connection for this envID (e.g. via a reconnect path).  Prefer
+	// the existing one and discard ours to avoid overwriting it.
+	if existing, ok := cdpConns[envID]; ok {
+		cdpMu.Unlock()
+		ws.Close()
+		close(sig)
+		return existing, nil
+	}
+
+	conn := &cdpConn{
 		ws:   ws,
 		resp: make(map[int]chan CDPResponse),
 		done: make(chan struct{}),
 	}
-
-	cdpMu.Lock()
 	cdpConns[envID] = conn
 	cdpMu.Unlock()
 
+	close(sig) // wake waiters — they will find conn in the pool
 	go conn.readLoop()
 	return conn, nil
 }
@@ -253,12 +294,17 @@ func RemoveCDPConn(envID string) {
 	}
 }
 
-// CloseCDP closes all pooled CDP connections.
+// CloseCDP closes all pooled CDP connections and wakes any in-flight dialers.
 func CloseCDP() {
 	cdpMu.Lock()
 	defer cdpMu.Unlock()
 	for _, conn := range cdpConns {
 		conn.ws.Close()
 	}
-	cdpConns = nil
+	cdpConns = make(map[string]*cdpConn)
+	// Wake any goroutines waiting on in-flight dials so they don't block forever.
+	for _, ch := range cdpDialing {
+		close(ch)
+	}
+	cdpDialing = make(map[string]chan struct{})
 }
