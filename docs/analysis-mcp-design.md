@@ -170,11 +170,11 @@ Native 层的包级全局变量 `activeEventSink` 对单用户单实例场景不
 
 ### 六、Inspector
 
-嵌入 Web UI 调试工具（660 行 HTML/CSS/JS 字符串常量），提供工具浏览、调用、SSE 事件监控、场景管理。
+嵌入 Web UI 调试工具（660 行 HTML/CSS/JS），提供工具浏览、调用、SSE 事件监控、场景管理。
 
 **对本地单用户场景来说是恰到好处的设计。** 零依赖部署，启动后直接访问 `/inspector` 就能交互测试。与 Go 社区嵌入 pprof/Swagger 的传统一致。
 
-维护性上建议将前端代码迁移为独立文件 + `//go:embed`，这样可以用 IDE 正常编辑和高亮。不过这纯粹是开发体验问题，不影响功能。
+~~维护性上建议将前端代码迁移为独立文件 + `//go:embed`~~ **[已修复]**：已将 660 行 HTML/CSS/JS 从 Go 字符串常量提取为独立的 `inspector.html` 文件，`inspector.go` 改用 `//go:embed` 编译时嵌入（713 行 → 33 行），同时删除了未使用的 `inspectorToolsJSON()` 死代码。现在可以用 IDE 正常编辑和高亮前端代码。
 
 ---
 
@@ -201,13 +201,13 @@ Native 层的包级全局变量 `activeEventSink` 对单用户单实例场景不
 7. ~~Broadcast 丢消息时至少打日志~~ — 已在 `server.go` 的 `select+default` 分支添加 `log.Printf` 记录 event 类型和 client ID
 8. ~~工具描述增加使用引导~~ — 已为 10 个工具添加交叉引用引导（type↔fill、键盘工具、内容获取工具）
 9. ~~`json.Marshal` 错误处理~~ — 审计全部 14 处调用，修复 2 处有实际风险的（`browser_evaluate` JS 返回值可能含 NaN/Infinity、`BrowserCommand` CDP 请求序列化），其余 12 处序列化的都是纯基本类型 struct，保持原样
+10. ~~Inspector 前端代码迁移为 `//go:embed` 独立文件~~ — 提取 `inspector.html`，`inspector.go` 改用 `go:embed`，删除 `inspectorToolsJSON()` 死代码
 
 **可后续优化：**
 
-10. Inspector 前端代码迁移为 `//go:embed` 独立文件
 11. 配置文件支持环境变量覆盖
 12. 关注 MCP Streamable HTTP transport 演进
 
 #### 结论
 
-brosdk 的 MCP 封装整体设计合理，在 AI Agent 操控浏览器这个场景下做了很多有针对性的优化（双定位、Agent-Friendly 工具、interactiveOnly snapshot），录制回放系统的设计成熟度尤其突出。原报告中标记的 9 个应修复/建议改进项已全部处理完毕（竞态保护、关闭流程、超时保护、CDP 连接池竞态、表单事件派发、工具粒度评估、Broadcast 日志、工具描述引导、json.Marshal 错误处理），剩余改进方向集中在开发体验和配置灵活性等细节打磨上。当前实现质量可以稳定支撑本地单用户的日常使用。
+brosdk 的 MCP 封装整体设计合理，在 AI Agent 操控浏览器这个场景下做了很多有针对性的优化（双定位、Agent-Friendly 工具、interactiveOnly snapshot），录制回放系统的设计成熟度尤其突出。原报告中标记的 10 个应修复/建议改进项已全部处理完毕（竞态保护、关闭流程、超时保护、CDP 连接池竞态、表单事件派发、工具粒度评估、Broadcast 日志、工具描述引导、json.Marshal 错误处理、Inspector go:embed 迁移），剩余改进方向集中在配置灵活性和协议演进跟踪上。当前实现质量可以稳定支撑本地单用户的日常使用。
