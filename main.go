@@ -6,8 +6,10 @@
 //	brosdk-mcp-go -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765  (macOS)
 //	brosdk-mcp-go -addr :8765                                          (auto-download on first run)
 //
-// The server exposes a single SSE endpoint (GET /sse) and a message
-// endpoint (POST /message) as defined by the MCP 2024-11-05 spec.
+// Configuration priority: CLI flags > environment variables (BROSDK_*) > config file > defaults.
+//
+// The server exposes SSE (GET /sse) and message (POST /message) endpoints per MCP 2024-11-05,
+// plus a Streamable HTTP endpoint (POST/GET /mcp) per MCP 2025-03-26.
 package main
 
 import (
@@ -31,9 +33,23 @@ import (
 const version = "0.1.0"
 
 func main() {
-	libFlag := flag.String("lib", "", "Path to brosdk native library (auto-detect if empty)")
-	addr := flag.String("addr", ":8765", "SSE server listen address")
+	libFlag := flag.String("lib", "", "Path to brosdk native library (auto-detect if empty; env: BROSDK_LIB)")
+	addr := flag.String("addr", "", "Server listen address (default :8765; env: BROSDK_ADDR)")
 	flag.Parse()
+
+	// Apply env var fallback for CLI flags (CLI flag > env var > default).
+	if *libFlag == "" {
+		if v := os.Getenv("BROSDK_LIB"); v != "" {
+			*libFlag = v
+		}
+	}
+	if *addr == "" {
+		if v := os.Getenv("BROSDK_ADDR"); v != "" {
+			*addr = v
+		} else {
+			*addr = ":8765"
+		}
+	}
 
 	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
 	log.SetPrefix("[brosdk-mcp] ")
@@ -55,7 +71,7 @@ func main() {
 		log.Fatalf("failed to read config: %v", err)
 	}
 	if cfg == nil {
-		log.Fatalf("no config file found – provide config.json with at least apiKey")
+		log.Fatalf("no config found – provide config.json with at least apiKey, or set BROSDK_API_KEY env var")
 	}
 	if cfg.ApiKey == "" {
 		log.Fatalf("apiKey is missing in config – sdk_init requires a valid apiKey")
@@ -141,11 +157,11 @@ func main() {
 		}
 	}()
 
-	log.Printf("MCP SSE server listening on %s", *addr)
-	log.Printf("  Inspector    : http://localhost%s/inspector", *addr)
-	log.Printf("  SSE endpoint : http://localhost%s/sse", *addr)
-	log.Printf("  POST endpoint: http://localhost%s/message", *addr)
-	log.Printf("  Health check : http://localhost%s/health", *addr)
+	log.Printf("MCP server listening on %s", *addr)
+	log.Printf("  Inspector      : http://localhost%s/inspector", *addr)
+	log.Printf("  SSE (legacy)   : http://localhost%s/sse + /message", *addr)
+	log.Printf("  Streamable HTTP: http://localhost%s/mcp", *addr)
+	log.Printf("  Health check   : http://localhost%s/health", *addr)
 
 	if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("http server error: %v", err)

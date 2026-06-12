@@ -21,7 +21,7 @@ so AI Agents (Claude, CodeBuddy, etc.) can directly control fingerprint browser 
 - High-level browser operations powered by [chromedp](https://github.com/chromedp/chromedp) — click, type, fill, screenshot, PDF, no raw CDP required
 - Retain `browser_command` transparent CDP proxy for advanced/custom DevTools scenarios
 - Async tools deliver results via SSE events, with support for long-wait operations
-- Dual config files (`config.json` / `config.local.json`), auto-init SDK at startup
+- Dual config files (`config.json` / `config.local.json`) + environment variable overrides, auto-init SDK at startup
 - Cross-platform: Windows / macOS native support, auto-download library on first run
 
 ## Architecture
@@ -107,6 +107,31 @@ If a config file is found, `sdk_init` is called automatically.
 
 \* Either `apiKey` or `userSig` must be present.
 
+### Environment Variable Overrides
+
+All config fields can be overridden via `BROSDK_*` environment variables. Priority order:
+
+```
+CLI flag > Environment variable > Config file > Default
+```
+
+| Environment Variable   | Maps to       | Example                         |
+|-----------------------|---------------|---------------------------------|
+| `BROSDK_API_KEY`      | `apiKey`      | `BROSDK_API_KEY=your-id`        |
+| `BROSDK_USER_SIG`     | `userSig`     | `BROSDK_USER_SIG=sig-value`     |
+| `BROSDK_WORK_DIR`     | `workDir`     | `BROSDK_WORK_DIR=/data/sdk`     |
+| `BROSDK_PORT`         | `port`        | `BROSDK_PORT=5811`              |
+| `BROSDK_SDK_API_URL`  | `sdkApiUrl`   | `BROSDK_SDK_API_URL=https://`   |
+| `BROSDK_DEBUG`        | `debug`       | `BROSDK_DEBUG=true`             |
+| `BROSDK_LIB`          | `-lib` flag   | `BROSDK_LIB=./libs/sdk.dll`     |
+| `BROSDK_ADDR`         | `-addr` flag  | `BROSDK_ADDR=:9000`             |
+
+You can run without a config file using only environment variables:
+
+```bash
+BROSDK_API_KEY=your-id BROSDK_ADDR=:8765 brosdk-mcp
+```
+
 ### Local Dev Override
 
 Copy `config.json` → `config.local.json` with different credentials; the
@@ -140,12 +165,13 @@ Real-time progress is printed to console during download.
 
 ## Endpoints
 
-| Endpoint       | Method | Description                         |
-|----------------|--------|-------------------------------------|
-| `/inspector`   | GET    | Built-in MCP Inspector Web UI       |
-| `/sse`         | GET    | SSE stream (MCP transport)          |
-| `/message`     | POST   | JSON-RPC 2.0 request endpoint       |
-| `/health`      | GET    | Health check (returns `200 OK`)     |
+| Endpoint       | Method          | Description                         |
+|----------------|-----------------|-------------------------------------|
+| `/inspector`   | GET             | Built-in MCP Inspector Web UI       |
+| `/mcp`         | POST/GET/DELETE | Streamable HTTP transport (MCP 2025-03-26) |
+| `/sse`         | GET             | SSE stream (MCP 2024-11-05, legacy) |
+| `/message`     | POST            | JSON-RPC 2.0 request endpoint (legacy) |
+| `/health`      | GET             | Health check (returns `200 OK`)     |
 
 ## MCP Tools (72)
 
@@ -525,10 +551,12 @@ brosdk-mcp-go/
     │   ├── actions.go             # chromedp browser actions (Windows / macOS)
     │   └── actions_unsupported.go # actions stub (other platforms)
     ├── config/
-    │   └── config.go              # Startup config loader (config.local.json → config.json)
+    │   └── config.go              # Startup config loader (config.local.json → config.json + BROSDK_* env vars)
     ├── mcp/
-    │   ├── server.go              # MCP SSE server (JSON-RPC 2.0 + broadcast)
-    │   └── inspector.go           # Built-in MCP Inspector Web UI
+    │   ├── server.go              # MCP server (JSON-RPC 2.0 + SSE/Streamable HTTP + broadcast)
+    │   ├── streamable.go          # Streamable HTTP transport (MCP 2025-03-26)
+    │   ├── inspector.go           # go:embed loader
+    │   └── inspector.html         # Built-in MCP Inspector Web UI (standalone HTML)
     └── tools/
         └── tools.go               # 72 tool definitions + handler dispatch + Recorder hook
     └── recorder/

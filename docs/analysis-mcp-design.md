@@ -36,7 +36,7 @@ server.go 约 285 行，手写实现了一个最小 MCP SSE Server（spec 2024-1
 
 2. ~~**Broadcast 丢消息无感知**~~ **[已修复]**：`select + default` 的非阻塞发送在 channel 满时会静默丢弃消息。本地单用户场景下 SSE 消费通常很及时（64 条缓冲足够），但如果 Agent 在处理一个耗时操作时恰好有密集事件到达，可能丢失异步通知。~~建议至少在丢消息时打一条日志。~~ 现已添加 `log.Printf` 记录丢消息的 event 类型和 client ID。
 
-3. **仅支持 SSE transport**：MCP 2025-03-26 新增了 Streamable HTTP transport，未来可能替代纯 SSE。当前实现不影响使用，但需要关注客户端生态的演进方向。
+3. ~~**仅支持 SSE transport**~~ **[已修复]**：已新增 MCP 2025-03-26 Streamable HTTP transport（`/mcp` 端点），支持 POST 请求/响应、GET 服务端事件流、DELETE 会话终止。旧版 `/sse` + `/message` 保留向后兼容。协议版本已升级到 `2025-03-26`。
 
 ---
 
@@ -202,12 +202,9 @@ Native 层的包级全局变量 `activeEventSink` 对单用户单实例场景不
 8. ~~工具描述增加使用引导~~ — 已为 10 个工具添加交叉引用引导（type↔fill、键盘工具、内容获取工具）
 9. ~~`json.Marshal` 错误处理~~ — 审计全部 14 处调用，修复 2 处有实际风险的（`browser_evaluate` JS 返回值可能含 NaN/Infinity、`BrowserCommand` CDP 请求序列化），其余 12 处序列化的都是纯基本类型 struct，保持原样
 10. ~~Inspector 前端代码迁移为 `//go:embed` 独立文件~~ — 提取 `inspector.html`，`inspector.go` 改用 `go:embed`，删除 `inspectorToolsJSON()` 死代码
-
-**可后续优化：**
-
-11. 配置文件支持环境变量覆盖
-12. 关注 MCP Streamable HTTP transport 演进
+11. ~~配置文件支持环境变量覆盖~~ — `config.Load()` 现在支持 `BROSDK_*` 环境变量覆盖所有字段（`BROSDK_API_KEY`、`BROSDK_USER_SIG`、`BROSDK_WORK_DIR`、`BROSDK_PORT`、`BROSDK_SDK_API_URL`、`BROSDK_DEBUG`），优先级为 CLI flag > 环境变量 > 配置文件 > 默认值；无配置文件时也可纯通过环境变量启动
+12. ~~关注 MCP Streamable HTTP transport 演进~~ — 已实现 MCP 2025-03-26 Streamable HTTP transport（`/mcp` 端点），支持 POST/GET/DELETE 三种方法、会话管理（`Mcp-Session-Id`）、内容协商（JSON/SSE）；保留旧版 `/sse` + `/message` 向后兼容；Inspector 前端自动检测并使用 Streamable HTTP（失败时回退 SSE）
 
 #### 结论
 
-brosdk 的 MCP 封装整体设计合理，在 AI Agent 操控浏览器这个场景下做了很多有针对性的优化（双定位、Agent-Friendly 工具、interactiveOnly snapshot），录制回放系统的设计成熟度尤其突出。原报告中标记的 10 个应修复/建议改进项已全部处理完毕（竞态保护、关闭流程、超时保护、CDP 连接池竞态、表单事件派发、工具粒度评估、Broadcast 日志、工具描述引导、json.Marshal 错误处理、Inspector go:embed 迁移），剩余改进方向集中在配置灵活性和协议演进跟踪上。当前实现质量可以稳定支撑本地单用户的日常使用。
+brosdk 的 MCP 封装整体设计合理，在 AI Agent 操控浏览器这个场景下做了很多有针对性的优化（双定位、Agent-Friendly 工具、interactiveOnly snapshot），录制回放系统的设计成熟度尤其突出。原报告中标记的 12 个应修复/建议改进项已全部处理完毕（竞态保护、关闭流程、超时保护、CDP 连接池竞态、表单事件派发、工具粒度评估、Broadcast 日志、工具描述引导、json.Marshal 错误处理、Inspector go:embed 迁移、环境变量配置覆盖、MCP Streamable HTTP transport）。当前实现质量可以稳定支撑本地单用户的日常使用，同时已具备面向未来 MCP 协议演进的兼容性。

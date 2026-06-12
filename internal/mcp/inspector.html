@@ -219,6 +219,8 @@ let sseSource = null;
 let eventCount = 0;
 let callHistory = [];
 let historyIdx = 0;
+let transportMode = 'sse'; // 'streamable' or 'sse'
+let mcpSessionId = null;
 
 // ── DOM refs ──
 const $ = id => document.getElementById(id);
@@ -240,15 +242,85 @@ function now() {
   return d.toTimeString().slice(0,8) + '.' + String(d.getMilliseconds()).padStart(3,'0');
 }
 
-// ── SSE Connection ──
-function connectSSE() {
+// ── MCP transport helpers ──
+function mcpHeaders() {
+  const h = {'Content-Type': 'application/json'};
+  if (mcpSessionId) h['Mcp-Session-Id'] = mcpSessionId;
+  return h;
+}
+
+async function mcpPost(body) {
+  const endpoint = transportMode === 'streamable' ? '/mcp' : '/message';
+  return fetch(endpoint, {method: 'POST', headers: mcpHeaders(), body: JSON.stringify(body)});
+}
+
+// ── Connection (Streamable HTTP with SSE fallback) ──
+async function connectStream() {
+  // Try Streamable HTTP by sending an initialize request to /mcp
+  try {
+    const resp = await fetch('/mcp', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream'},
+      body: JSON.stringify({jsonrpc: '2.0', id: 'init-stream', method: 'initialize', params: {
+        protocolVersion: '2025-03-26',
+        capabilities: {},
+        clientInfo: {name: 'BroSDK-Inspector', version: '1.0'}
+      }})
+    });
+    if (resp.ok) {
+      transportMode = 'streamable';
+      mcpSessionId = resp.headers.get('Mcp-Session-Id');
+      appendSSE('system', 'Streamable HTTP transport connected (session: ' + (mcpSessionId || 'none') + ')');
+      sseDot.className = 'dot on';
+      sseStatus.textContent = 'Connected';
+      // Open GET stream for server-initiated events
+      openStreamableGET();
+      // Send initialized notification
+      await fetch('/mcp', {
+        method: 'POST',
+        headers: mcpHeaders(),
+        body: JSON.stringify({jsonrpc: '2.0', method: 'notifications/initialized'})
+      });
+      return;
+    }
+  } catch(_) {}
+  // Fall back to legacy SSE
+  transportMode = 'sse';
+  connectLegacySSE();
+}
+
+function openStreamableGET() {
+  if (sseSource) sseSource.close();
+  const headers = {};
+  if (mcpSessionId) headers['Mcp-Session-Id'] = mcpSessionId;
+  // EventSource doesn't support custom headers, so pass session ID as query param
+  const url = mcpSessionId ? '/mcp?sessionId=' + mcpSessionId : '/mcp';
+  sseSource = new EventSource(url);
+
+  sseSource.addEventListener('endpoint', (e) => { appendSSE('endpoint', e.data); });
+  sseSource.addEventListener('message', (e) => {
+    try { appendSSE('message', formatJSON(JSON.parse(e.data))); } catch(_) { appendSSE('message', e.data); }
+  });
+  sseSource.addEventListener('sdk-event', (e) => {
+    try { appendSSE('sdk-event', formatJSON(JSON.parse(e.data))); } catch(_) { appendSSE('sdk-event', e.data); }
+  });
+  sseSource.onerror = () => {
+    sseDot.className = 'dot off';
+    sseStatus.textContent = 'Disconnected';
+    appendSSE('system', 'Stream disconnected — retrying in 3s...');
+    sseSource.close();
+    setTimeout(openStreamableGET, 3000);
+  };
+}
+
+function connectLegacySSE() {
   if (sseSource) sseSource.close();
   sseSource = new EventSource('/sse');
 
   sseSource.onopen = () => {
     sseDot.className = 'dot on';
-    sseStatus.textContent = 'Connected';
-    appendSSE('system', 'SSE connection established');
+    sseStatus.textContent = 'Connected (SSE)';
+    appendSSE('system', 'Legacy SSE connection established');
   };
 
   sseSource.addEventListener('endpoint', (e) => {
@@ -278,7 +350,7 @@ function connectSSE() {
     sseStatus.textContent = 'Disconnected';
     appendSSE('system', 'SSE disconnected — retrying in 3s...');
     sseSource.close();
-    setTimeout(connectSSE, 3000);
+    setTimeout(connectLegacySSE, 3000);
   };
 }
 
@@ -321,11 +393,7 @@ function appendSSE(type, data) {
 // ── Fetch tools via JSON-RPC ──
 async function fetchTools() {
   try {
-    const resp = await fetch('/message', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({jsonrpc:'2.0',id:'init-ts',method:'tools/list'})
-    });
+    const resp = await mcpPost({jsonrpc:'2.0',id:'init-ts',method:'tools/list'});
     const j = await resp.json();
     return j.result.tools || [];
   } catch(e) {
@@ -417,11 +485,7 @@ async function callTool() {
 
   const startTime = now();
   try {
-    const resp = await fetch('/message', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(reqBody)
-    });
+    const resp = await mcpPost(reqBody);
     const j = await resp.json();
     addHistory(selectedTool.name, params, j, startTime, false);
   } catch(e) {
@@ -498,11 +562,7 @@ function switchTab(tab) {
 
 async function rpcCall(method, params) {
   const id = 's-' + (++historyIdx);
-  const resp = await fetch('/message', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({jsonrpc:'2.0', id, method, params})
-  });
+  const resp = await mcpPost({jsonrpc:'2.0', id, method, params});
   const j = await resp.json();
   if (j.error) throw new Error(j.error.message);
   return j.result;
@@ -646,7 +706,7 @@ document.addEventListener('keydown', (e) => {
 
 // ── Initialize ──
 async function init() {
-  connectSSE();
+  await connectStream();
   tools = await fetchTools();
   renderTools();
   if (tools.length > 0) selectTool(tools[0]);

@@ -1,10 +1,12 @@
-// Package mcp implements a minimal MCP (Model Context Protocol) SSE server.
+// Package mcp implements a minimal MCP (Model Context Protocol) server
+// supporting both SSE transport (2024-11-05) and Streamable HTTP (2025-03-26).
 //
 // Endpoints:
 //
 //	GET  /inspector – embedded MCP Inspector web UI
-//	GET  /sse       – opens an SSE stream; server sends "endpoint" event first
-//	POST /message   – client sends JSON-RPC 2.0 requests here
+//	GET  /sse       – SSE stream (legacy transport)
+//	POST /message   – JSON-RPC 2.0 requests (legacy transport)
+//	POST/GET/DELETE /mcp – Streamable HTTP transport (2025-03-26)
 package mcp
 
 import (
@@ -76,14 +78,15 @@ type sseClient struct {
 // Returns (result text, isError).
 type Handler func(name string, params json.RawMessage) (string, bool)
 
-// Server is a minimal MCP SSE server.
+// Server is a minimal MCP server supporting SSE and Streamable HTTP transports.
 type Server struct {
 	info    ServerInfo
 	tools   []ToolDef
 	handler Handler
 
-	mu      sync.RWMutex
-	clients map[uint64]*sseClient
+	mu       sync.RWMutex
+	clients  map[uint64]*sseClient
+	sessions map[string]*session
 
 	nextID atomic.Uint64
 }
@@ -91,17 +94,23 @@ type Server struct {
 // NewServer creates a new Server.
 func NewServer(info ServerInfo, tools []ToolDef, handler Handler) *Server {
 	return &Server{
-		info:    info,
-		tools:   tools,
-		handler: handler,
-		clients: make(map[uint64]*sseClient),
+		info:     info,
+		tools:    tools,
+		handler:  handler,
+		clients:  make(map[uint64]*sseClient),
+		sessions: make(map[string]*session),
 	}
 }
 
-// Register registers the SSE, message, inspector, and health handlers on mux.
+// Register registers all MCP handlers on mux: legacy SSE transport,
+// Streamable HTTP transport, inspector, and health check.
 func (s *Server) Register(mux *http.ServeMux) {
+	// Legacy SSE transport (2024-11-05).
 	mux.HandleFunc("/sse", s.handleSSE)
 	mux.HandleFunc("/message", s.handleMessage)
+	// Streamable HTTP transport (2025-03-26).
+	mux.HandleFunc("/mcp", s.handleStreamable)
+	// Auxiliary.
 	mux.HandleFunc("/inspector", s.handleInspector)
 	mux.HandleFunc("/health", s.handleHealth)
 }
@@ -111,16 +120,35 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	fmt.Fprintln(w, `{"status":"ok","version":"`+s.info.Version+`"}`)
 }
 
-// Broadcast pushes a custom SSE event to all connected clients.
+// Broadcast pushes a custom SSE event to all connected clients:
+// both legacy SSE clients and Streamable HTTP sessions.
+// Uses copy-then-send to avoid holding locks during channel sends.
 func (s *Server) Broadcast(eventType, data string) {
 	msg := fmt.Sprintf("event: %s\ndata: %s\n\n", eventType, data)
+
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	for id, c := range s.clients {
+	legacyChs := make([]chan string, 0, len(s.clients))
+	for _, c := range s.clients {
+		legacyChs = append(legacyChs, c.ch)
+	}
+	sessionChs := make([]chan string, 0, len(s.sessions))
+	for _, sess := range s.sessions {
+		sessionChs = append(sessionChs, sess.ch)
+	}
+	s.mu.RUnlock()
+
+	for _, ch := range legacyChs {
 		select {
-		case c.ch <- msg:
+		case ch <- msg:
 		default:
-			log.Printf("mcp: sse broadcast dropped event=%s for client %d (channel full)", eventType, id)
+			log.Printf("mcp: sse broadcast dropped event=%s (channel full)", eventType)
+		}
+	}
+	for _, ch := range sessionChs {
+		select {
+		case ch <- msg:
+		default:
+			log.Printf("mcp: session broadcast dropped event=%s (channel full)", eventType)
 		}
 	}
 }
@@ -235,7 +263,7 @@ func (s *Server) dispatch(req Request) Response {
 
 func (s *Server) handleInitialize(req Request) Response {
 	result := map[string]any{
-		"protocolVersion": "2024-11-05",
+		"protocolVersion": "2025-03-26",
 		"serverInfo":      s.info,
 		"capabilities": map[string]any{
 			"tools": map[string]any{},

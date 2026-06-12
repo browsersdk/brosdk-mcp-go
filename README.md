@@ -22,7 +22,7 @@
 - 保留 `browser_command` 透明 CDP 代理，支持所有 DevTools 命令的高级/自定义场景
 - **录制回放**：`record_start` → 操作（自动捕获）→ `record_stop` 自动保存场景，`scene_replay` 一键回放，支持 `{{变量}}` 替换
 - 异步工具通过 SSE 事件回传结果，支持长时间等待
-- 双配置文件（`config.json` / `config.local.json`），启动时**必须提供 apiKey**
+- 双配置文件（`config.json` / `config.local.json`）+ 环境变量覆盖，启动时**必须提供 apiKey**
 - 跨平台：Windows / macOS 原生支持，首次运行自动下载对应动态库
 
 ## 架构
@@ -106,6 +106,31 @@ build constraint：`//go:build windows` / `//go:build darwin` / `//go:build !win
 
 \* `apiKey` 或 `userSig` 二选一必须提供。
 
+### 环境变量覆盖
+
+所有配置字段均可通过 `BROSDK_*` 环境变量覆盖，优先级为：
+
+```
+CLI flag > 环境变量 > 配置文件 > 默认值
+```
+
+| 环境变量            | 对应字段       | 示例                          |
+|--------------------|----------------|-------------------------------|
+| `BROSDK_API_KEY`   | `apiKey`       | `BROSDK_API_KEY=your-id`      |
+| `BROSDK_USER_SIG`  | `userSig`      | `BROSDK_USER_SIG=sig-value`   |
+| `BROSDK_WORK_DIR`  | `workDir`      | `BROSDK_WORK_DIR=/data/sdk`   |
+| `BROSDK_PORT`      | `port`         | `BROSDK_PORT=5811`            |
+| `BROSDK_SDK_API_URL`| `sdkApiUrl`   | `BROSDK_SDK_API_URL=https://` |
+| `BROSDK_DEBUG`     | `debug`        | `BROSDK_DEBUG=true`           |
+| `BROSDK_LIB`       | `-lib` flag    | `BROSDK_LIB=./libs/sdk.dll`   |
+| `BROSDK_ADDR`      | `-addr` flag   | `BROSDK_ADDR=:9000`           |
+
+无配置文件时也可纯通过环境变量启动，例如：
+
+```bash
+BROSDK_API_KEY=your-id BROSDK_ADDR=:8765 brosdk-mcp
+```
+
 ### 本地开发覆盖
 
 复制 `config.json` → `config.local.json`，填入不同凭据；
@@ -139,12 +164,13 @@ brosdk-mcp -lib ./libs/darwin-arm64/libbrosdk.dylib -addr :8765
 
 ## 端点
 
-| 端点        | 方法  | 说明                          |
-|------------|------|--------------------------------|
-| `/inspector` | GET | 内嵌 MCP Inspector Web UI     |
-| `/sse`     | GET  | SSE 流（MCP transport）        |
-| `/message` | POST | JSON-RPC 2.0 请求端点         |
-| `/health`  | GET  | 健康检查（返回 `200 OK`）      |
+| 端点        | 方法            | 说明                          |
+|------------|----------------|--------------------------------|
+| `/inspector` | GET           | 内嵌 MCP Inspector Web UI     |
+| `/mcp`     | POST/GET/DELETE | Streamable HTTP transport（MCP 2025-03-26）|
+| `/sse`     | GET             | SSE 流（MCP 2024-11-05，旧版兼容）|
+| `/message` | POST            | JSON-RPC 2.0 请求端点（旧版兼容）|
+| `/health`  | GET             | 健康检查（返回 `200 OK`）      |
 
 ## MCP Tools（72 个）
 
@@ -517,10 +543,12 @@ brosdk-mcp-go/
     │   ├── actions.go             # chromedp 高层浏览器操作（Windows / macOS）
     │   └── actions_unsupported.go # actions 桩（其他平台）
     ├── config/
-    │   └── config.go              # 启动配置加载（config.local.json → config.json）
+    │   └── config.go              # 启动配置加载（config.local.json → config.json + BROSDK_* 环境变量）
     ├── mcp/
-    │   ├── server.go              # MCP SSE 服务器（JSON-RPC 2.0 + 广播）
-    │   └── inspector.go           # 内嵌 MCP Inspector Web UI
+    │   ├── server.go              # MCP 服务器（JSON-RPC 2.0 + SSE/Streamable HTTP + 广播）
+    │   ├── streamable.go          # Streamable HTTP transport（MCP 2025-03-26）
+    │   ├── inspector.go           # go:embed 加载器
+    │   └── inspector.html         # 内嵌 MCP Inspector Web UI（独立 HTML 文件）
     └── tools/
         └── tools.go               # 72 个 Tool 定义 + handler dispatch + Recorder hook
     └── recorder/
