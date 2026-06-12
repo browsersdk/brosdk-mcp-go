@@ -1323,7 +1323,10 @@ func Dispatch(mgr *brosdk.Manager, name string, p map[string]any) (string, error
 		if err := mgr.Evaluate(envID, str(p, "sessionId"), expr, &result); err != nil {
 			return "", err
 		}
-		b, _ := json.Marshal(result)
+		b, err := json.Marshal(result)
+		if err != nil {
+			return "", fmt.Errorf("marshal evaluate result: %w (raw value may contain NaN/Infinity)", err)
+		}
 		return string(b), nil
 
 	case "browser_select_option":

@@ -138,7 +138,10 @@ func (m *Manager) BrowserCommand(envID, method string, params map[string]any, se
 		Params:    params,
 		SessionID: sessionID,
 	}
-	body, _ := json.Marshal(req)
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("marshal cdp request: %w", err)
+	}
 
 	ch := make(chan CDPResponse, 1)
 	conn.mu.Lock()

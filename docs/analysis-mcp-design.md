@@ -34,7 +34,7 @@ server.go 约 285 行，手写实现了一个最小 MCP SSE Server（spec 2024-1
 
 1. **双通道响应**：`handleMessage` 在 HTTP 响应和 SSE Broadcast 中同时推送结果。对于单用户场景这不会造成数据泄露，但 Agent 可能收到两份相同结果——HTTP 同步响应 + SSE `message` 事件。MCP 客户端通常只取其一，所以实际无害，但设计上不够干净。理想做法是只对异步事件走 SSE，同步响应走 HTTP。
 
-2. **Broadcast 丢消息无感知**：`select + default` 的非阻塞发送在 channel 满时会静默丢弃消息。本地单用户场景下 SSE 消费通常很及时（64 条缓冲足够），但如果 Agent 在处理一个耗时操作时恰好有密集事件到达，可能丢失异步通知。建议至少在丢消息时打一条日志。
+2. ~~**Broadcast 丢消息无感知**~~ **[已修复]**：`select + default` 的非阻塞发送在 channel 满时会静默丢弃消息。本地单用户场景下 SSE 消费通常很及时（64 条缓冲足够），但如果 Agent 在处理一个耗时操作时恰好有密集事件到达，可能丢失异步通知。~~建议至少在丢消息时打一条日志。~~ 现已添加 `log.Printf` 记录丢消息的 event 类型和 client ID。
 
 3. **仅支持 SSE transport**：MCP 2025-03-26 新增了 Streamable HTTP transport，未来可能替代纯 SSE。当前实现不影响使用，但需要关注客户端生态的演进方向。
 
@@ -66,19 +66,23 @@ snapshot(interactiveOnly) → 获取 AX tree + ref → 用 _ref 工具精确操�
 
 72 个工具的 schema 在 `tools/list` 响应中一次性发送给 Agent，估算消耗 6000-8000 tokens。对于当前主流 LLM 的 context window 来说不是大问题，但确实增加了每轮对话的基础开销。
 
-更实质的问题是：**部分工具的粒度偏细，增加了 Agent 的选择负担。**
+更实质的问题是：~~**部分工具的粒度偏细，增加了 Agent 的选择负担。**~~ **经评估，当前粒度是合理的**（详见下文分析）。
 
-键盘操作拆成了 5 个工具（`press_key`、`keyboard_type`、`insert_text`、`key_down`、`key_up`），对于 LLM 来说区分 `press_key` vs `keyboard_type` vs `insert_text` 的语义差异是困难的——三者都能实现"输入文本"的效果。类似地，`get_text` / `get_value` / `get_html` 可以合并为一个 `get_content` 工具通过 mode 参数区分。
+键盘操作拆成了 5 个工具（`press_key`、`keyboard_type`、`insert_text`、`key_down`、`key_up`），表面上看粒度偏细，但深入实现后发现它们对应 CDP 层面不同的操作语义：`press_key` 调用 `chromedp.KeyEvent` 模拟单次完整按键（keyDown+keyUp）；`keyboard_type` 逐字符派发 `input.KeyChar` 事件，触发完整的 keydown/keypress/input/keyup 链路，对有 per-key 事件监听的站点（autocomplete、input mask）是必需的；`insert_text` 使用 `input.InsertText` 一次性插入文本，不触发逐字符 key 事件；`key_down`/`key_up` 是 modifier 键的状态控制（按下/释放），与 `press_key` 的单次触发语义完全不同。~~合并这些工具为带 mode 参数的单一工具，Agent 仍然需要理解底层差异才能正确选择参数，只是把"选哪个工具"变成了"填什么参数"，并未真正降低认知负担。~~ **经评估：当前粒度合理，不宜合并。**
+
+类似地，`get_text` / `get_value` / `get_html` 中 `get_text`（textContent）和 `get_value`（input value）操作语义不同（前者取元素文本，后者取表单值），`get_html` 甚至不接受 selector 参数（返回整页 outerHTML），~~三者合并为 `get_content` 会让 schema 更复杂而非更简单。~~ **经评估：不宜合并。**
 
 另一个方向上，`browser_wait` 集成了 4 种等待模式（navigation/selector/text/time），参数空间较大，Agent 容易传错参数。这个工具反而粒度偏粗了。
 
-**建议**：将键盘输入合并为 2 个工具（`press_key` + `insert_text`），内容获取合并为 `get_content`，总计可减少约 5-8 个工具。同时考虑将 `browser_wait` 拆分为 `wait_for_element` 和 `wait_for_navigation` 两个更语义明确的工具。
+**建议**：考虑将 `browser_wait` 拆分为 `wait_for_element` 和 `wait_for_navigation` 两个更语义明确的工具。工具总数维持 72 个不变——当前数量对主流 LLM 的 context window 不构成问题，各工具的语义区分度也是必要的。
 
 #### 3.4 工具描述质量
 
-工具描述整体质量不错：每个 description 用 1-2 句话清晰说明了功能和参数含义，`browser_snapshot` 的描述还特别提示了 `interactiveOnly` 的 token 节省效果。`browser_command` 标注了 `[Advanced]` 前缀引导 Agent 优先使用高层工具。
+~~工具描述整体质量不错：每个 description 用 1-2 句话清晰说明了功能和参数含义，`browser_snapshot` 的描述还特别提示了 `interactiveOnly` 的 token 节省效果。`browser_command` 标注了 `[Advanced]` 前缀引导 Agent 优先使用高层工具。~~
 
-不过有些描述可以更 Agent-friendly。比如 `browser_type` 说 "appends to existing value, fires input/change events"，而 `browser_fill` 说 "Clear an input field and type new text"——这两个的区别对 Agent 来说不够直觉，建议在 `browser_type` 的描述中加一句 "Use browser_fill to replace existing content"。
+~~不过有些描述可以更 Agent-friendly。比如 `browser_type` 说 "appends to existing value, fires input/change events"，而 `browser_fill` 说 "Clear an input field and type new text"——这两个的区别对 Agent 来说不够直觉，建议在 `browser_type` 的描述中加一句 "Use browser_fill to replace existing content"。~~
+
+**[已修复]** 已为 10 个工具添加了交叉引用引导：type↔fill 互引、keyboard_type 提示优先用 type/fill、insert_text 提示使用场景、key_down/key_up 互引、get_text/get_value 互引。Agent 现在能从工具描述中直接了解到相似工具的差异和选择建议。
 
 #### 3.5 Dispatch 机制
 
@@ -160,7 +164,7 @@ Native 层的包级全局变量 `activeEventSink` 对单用户单实例场景不
 
 工具调用失败时，error 信息通过 `ToolResult.IsError=true` 返回给 Agent。错误消息质量参差不齐：`envId is required` 很清晰，但有些地方直接返回了 Go 的内部错误（如 `chromedp` 的原始错误），Agent 可能难以理解。
 
-`jsonFromParams` 和散落在各处的 `json.Marshal` 忽略了 error。虽然 `json.Marshal` 对 `map[string]any` 极少失败，但对一个要封装为 MCP 服务的项目来说，这些被忽略的错误在极端情况下会产生难以排查的 bug。
+~~`jsonFromParams` 和散落在各处的 `json.Marshal` 忽略了 error。~~ **[已修复]** 审计了全部 14 处 `json.Marshal` 调用，其中 12 处序列化的是纯基本类型 struct（string/int/bool），`json.Marshal` 不可能失败，保持原样；2 处有实际风险的已修复：`browser_evaluate` 的 JS 返回值（`any` 类型，可能含 NaN/Infinity）现在返回明确错误；`BrowserCommand` 的 CDP 请求序列化失败现在提前返回 error 而非向 WebSocket 发送 nil body。
 
 ---
 
@@ -193,19 +197,17 @@ Native 层的包级全局变量 `activeEventSink` 对单用户单实例场景不
 3. ~~Screenshot/PDF 操作添加超时保护~~ — `captureTimeout = 30s`，修复 `MkdirAll` 忽略 error
 4. ~~CDP `getOrDial()` 并发 dial 竞态~~ — `cdpDialing` 信号量保证单 envID 单次 dial
 5. ~~`Fill()`/`FillRef()`/`SelectOption()` 缺少 input/change 事件~~ — `SetValue` 后追加事件派发，React/Vue 兼容
-
-**建议改进：**
-
-6. 合并细粒度工具（键盘 5→2、内容获取 3→1），减少约 5-8 个工具降低 Agent 选择负担和 token 开销
-7. Broadcast 丢消息时至少打日志
-8. 工具描述增加使用引导（如 `browser_type` 提示 "用 fill 替换内容"）
+6. ~~合并细粒度工具（键盘 5→2、内容获取 3→1）~~ — **经评估不宜合并**：5 个键盘工具对应 CDP 层面不同的操作语义（KeyEvent vs KeyChar vs InsertText vs KeyDown/KeyUp），合并为带 mode 参数的单一工具并未降低认知负担；内容获取三个工具的参数签名和功能语义差异过大，强行合并只会让 schema 更复杂。当前粒度合理。
+7. ~~Broadcast 丢消息时至少打日志~~ — 已在 `server.go` 的 `select+default` 分支添加 `log.Printf` 记录 event 类型和 client ID
+8. ~~工具描述增加使用引导~~ — 已为 10 个工具添加交叉引用引导（type↔fill、键盘工具、内容获取工具）
+9. ~~`json.Marshal` 错误处理~~ — 审计全部 14 处调用，修复 2 处有实际风险的（`browser_evaluate` JS 返回值可能含 NaN/Infinity、`BrowserCommand` CDP 请求序列化），其余 12 处序列化的都是纯基本类型 struct，保持原样
 
 **可后续优化：**
 
-9. Inspector 前端代码迁移为 `//go:embed` 独立文件
-10. 配置文件支持环境变量覆盖
-11. 关注 MCP Streamable HTTP transport 演进
+10. Inspector 前端代码迁移为 `//go:embed` 独立文件
+11. 配置文件支持环境变量覆盖
+12. 关注 MCP Streamable HTTP transport 演进
 
 #### 结论
 
-brosdk 的 MCP 封装整体设计合理，在 AI Agent 操控浏览器这个场景下做了很多有针对性的优化（双定位、Agent-Friendly 工具、interactiveOnly snapshot），录制回放系统的设计成熟度尤其突出。原报告中标记的 5 个应修复/建议改进项已全部修复（竞态保护、关闭流程、超时保护、CDP 连接池竞态、表单事件派发），剩余改进方向集中在工具数量精简和细节打磨上。当前实现质量可以稳定支撑本地单用户的日常使用。
+brosdk 的 MCP 封装整体设计合理，在 AI Agent 操控浏览器这个场景下做了很多有针对性的优化（双定位、Agent-Friendly 工具、interactiveOnly snapshot），录制回放系统的设计成熟度尤其突出。原报告中标记的 9 个应修复/建议改进项已全部处理完毕（竞态保护、关闭流程、超时保护、CDP 连接池竞态、表单事件派发、工具粒度评估、Broadcast 日志、工具描述引导、json.Marshal 错误处理），剩余改进方向集中在开发体验和配置灵活性等细节打磨上。当前实现质量可以稳定支撑本地单用户的日常使用。
