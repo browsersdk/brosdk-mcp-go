@@ -168,13 +168,6 @@ func main() {
 	}
 }
 
-// resolveLibPath determines the brosdk library path for the current platform.
-// Order: explicit -lib flag → local candidates → auto-download from GitHub.
-// This is the legacy fallback; EnsureLibrary in download.go does the full logic.
-func resolveLibPath(explicit string) string {
-	return explicit
-}
-
 // maskString returns a shortened, masked version for logging.
 func maskString(s string) string {
 	if len(s) <= 8 {
