@@ -10,8 +10,10 @@ import (
 // ---------- package-level singletons for callback bridging ----------
 
 var activeEventSink func(Event)
+var activeCookiesSink func(CookiesEvent)
 var activeWindowsLib *windowsLib
 var resultCallbackPtr uintptr
+var cookiesCallbackPtr uintptr
 
 // ---------- windowsLib ----------
 
@@ -37,8 +39,8 @@ type windowsLib struct {
 	freeProc                  *syscall.LazyProc
 }
 
-// loadNative loads the DLL and wires up the result callback.
-func loadNative(path string, eventSink func(Event)) (nativeLib, error) {
+// loadNative loads the DLL and wires up the result and cookie callbacks.
+func loadNative(path string, eventSink func(Event), cookieSink func(CookiesEvent)) (nativeLib, error) {
 	dll := syscall.NewLazyDLL(path)
 	lib := &windowsLib{
 		dll:                          dll,
@@ -69,6 +71,7 @@ func loadNative(path string, eventSink func(Event)) (nativeLib, error) {
 	}
 
 	activeEventSink = eventSink
+	activeCookiesSink = cookieSink
 	activeWindowsLib = lib
 	resultCallbackPtr = syscall.NewCallback(sdkResultCallback)
 
@@ -77,12 +80,19 @@ func loadNative(path string, eventSink func(Event)) (nativeLib, error) {
 		return nil, sdkError("sdk_register_result_cb failed: " + wrapErr(err).Error())
 	}
 
+	cookiesCallbackPtr = syscall.NewCallbackCDecl(sdkCookiesCallback)
+	code2, _, err2 := lib.registerCookiesStorageCBProc.Call(cookiesCallbackPtr, 0)
+	if int32(code2) < 0 {
+		return nil, sdkError("sdk_register_cookies_storage_cb failed: " + wrapErr(err2).Error())
+	}
+
 	return lib, nil
 }
 
 func (l *windowsLib) resolve() error {
 	procs := []*syscall.LazyProc{
 		l.registerResultCBProc,
+		l.registerCookiesStorageCBProc,
 		l.initProc,
 		l.initAsyncProc,
 		l.infoProc,
@@ -110,6 +120,11 @@ func (l *windowsLib) resolve() error {
 // ---------- nativeLib interface implementation ----------
 
 func (l *windowsLib) registerResultCB(_ func(Event)) error {
+	// Already wired in loadNative; no-op here.
+	return nil
+}
+
+func (l *windowsLib) registerCookiesStorageCB(_ func(CookiesEvent)) error {
 	// Already wired in loadNative; no-op here.
 	return nil
 }
@@ -266,6 +281,17 @@ func sdkResultCallback(code uintptr, _ uintptr, data uintptr, length uintptr) ui
 		Code: int32(code),
 		Data: ptrToString(data, length),
 	})
+	return 0
+}
+
+// sdkCookiesCallback is the __cdecl trampoline for sdk_cookies_storage_cb_t.
+// Read-only: we observe the cookie data but do not modify it (new_data/new_len stay NULL/0).
+func sdkCookiesCallback(data uintptr, length uintptr, _ uintptr, _ uintptr, _ uintptr) uintptr {
+	if activeCookiesSink != nil {
+		activeCookiesSink(CookiesEvent{
+			Data: ptrToString(data, length),
+		})
+	}
 	return 0
 }
 

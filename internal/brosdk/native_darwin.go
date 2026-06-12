@@ -10,6 +10,10 @@ package brosdk
 
 // ── function pointer typedefs matching brosdk.h ──
 typedef int (*sdk_register_result_cb_fn)(uintptr_t cb, uintptr_t user_data);
+typedef void (*sdk_cookies_storage_cb_fn)(const char *data, size_t len,
+                                          char **new_data, size_t *new_len,
+                                          void *user_data);
+typedef int (*sdk_register_cookies_storage_cb_fn)(uintptr_t cb, uintptr_t user_data);
 
 typedef int (*sdk_init_fn)(
 	uintptr_t handle,
@@ -62,13 +66,18 @@ static inline int call_sync_json(void* fn, const char* d, int len, char** out, s
 
 // ── callback bridge ──
 //
-// goSdkResultCallback is an exported Go function (see below).
-// We expose a typed pass-through so the SDK can call into Go.
+// goSdkResultCallback and goSdkCookiesCallback are exported Go functions.
+// We expose typed pass-throughs so the SDK can call into Go.
 
 extern void goSdkResultCallback(int code, void* userData, const char* data, int len);
+extern void goSdkCookiesCallback(const char* data, size_t len, char** newData, size_t* newLen, void* userData);
 
 static sdk_register_result_cb_fn get_register_cb(void* handle) {
 	return (sdk_register_result_cb_fn)dlsym(handle, "sdk_register_result_cb");
+}
+
+static int call_register_cookies_cb(void* fn, uintptr_t cb, uintptr_t user_data) {
+	return ((sdk_register_cookies_storage_cb_fn)fn)(cb, user_data);
 }
 */
 import "C"
@@ -77,6 +86,11 @@ import (
 	"fmt"
 	"unsafe"
 )
+
+// ── package-level singletons for callback bridging ──
+
+var activeEventSink func(Event)
+var activeCookiesSink func(CookiesEvent)
 
 // darwinLib wraps a dlopen'd dylib handle and pre-resolved function pointers.
 type darwinLib struct {
@@ -98,10 +112,11 @@ type darwinLib struct {
 	pMalloc        unsafe.Pointer
 	pFree          unsafe.Pointer
 	pRegCB         unsafe.Pointer
+	pRegCookiesCB  unsafe.Pointer
 }
 
-// loadNative opens the dylib at path and registers the result callback.
-func loadNative(path string, eventSink func(Event)) (nativeLib, error) {
+// loadNative opens the dylib at path and registers the result and cookie callbacks.
+func loadNative(path string, eventSink func(Event), cookieSink func(CookiesEvent)) (nativeLib, error) {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 
@@ -117,13 +132,20 @@ func loadNative(path string, eventSink func(Event)) (nativeLib, error) {
 	}
 
 	activeEventSink = eventSink
+	activeCookiesSink = cookieSink
 
 	// Register result callback — pass the exported Go callback as a C function pointer.
-	// CGo makes goSdkResultCallback directly callable from C.
 	regCB := *(**C.sdk_register_result_cb_fn)(unsafe.Pointer(&lib.pRegCB))
 	code := regCB(C.uintptr_t(uintptr(C.goSdkResultCallback)), 0)
 	if int32(code) < 0 {
 		return nil, sdkError(fmt.Sprintf("sdk_register_result_cb failed: code=%d", int32(code)))
+	}
+
+	// Register cookies storage callback.
+	code2 := C.call_register_cookies_cb(lib.pRegCookiesCB,
+		C.uintptr_t(uintptr(C.goSdkCookiesCallback)), 0)
+	if int32(code2) < 0 {
+		return nil, sdkError(fmt.Sprintf("sdk_register_cookies_storage_cb failed: code=%d", int32(code2)))
 	}
 
 	return lib, nil
@@ -146,7 +168,8 @@ func (l *darwinLib) resolve() error {
 		"sdk_env_destroy":          &l.pEnvDestroy,
 		"sdk_malloc":               &l.pMalloc,
 		"sdk_free":                 &l.pFree,
-		"sdk_register_result_cb":   &l.pRegCB,
+		"sdk_register_result_cb":          &l.pRegCB,
+		"sdk_register_cookies_storage_cb": &l.pRegCookiesCB,
 	}
 
 	for name, ptr := range syms {
@@ -173,9 +196,24 @@ func goSdkResultCallback(code C.int, _ unsafe.Pointer, data *C.char, length C.in
 	})
 }
 
+//export goSdkCookiesCallback
+func goSdkCookiesCallback(data *C.char, length C.size_t, _ **C.char, _ *C.size_t, _ unsafe.Pointer) {
+	if activeCookiesSink == nil {
+		return
+	}
+	goData := C.GoStringN(data, C.int(length))
+	activeCookiesSink(CookiesEvent{
+		Data: goData,
+	})
+}
+
 // ---------- nativeLib interface implementation ----------
 
 func (l *darwinLib) registerResultCB(_ func(Event)) error {
+	return nil // already registered in loadNative
+}
+
+func (l *darwinLib) registerCookiesStorageCB(_ func(CookiesEvent)) error {
 	return nil // already registered in loadNative
 }
 

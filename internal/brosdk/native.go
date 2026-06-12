@@ -3,6 +3,7 @@ package brosdk
 // nativeLib abstracts platform-specific DLL/dylib calls.
 type nativeLib interface {
 	registerResultCB(eventSink func(Event)) error
+	registerCookiesStorageCB(cookieSink func(CookiesEvent)) error
 	init(jsonBody string) (int32, string, error)
 	initAsync(jsonBody string) (int32, error)
 	info() (int32, string, error)

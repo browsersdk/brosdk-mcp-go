@@ -114,6 +114,12 @@ func main() {
 		log.Printf("sdk-event code=%d data=%s", evt.Code, evt.Data)
 	})
 
+	mgr.OnCookies(func(evt brosdk.CookiesEvent) {
+		data, _ := json.Marshal(evt)
+		srv.Broadcast("cookies-event", string(data))
+		log.Printf("cookies-event data=%s", truncate(evt.Data, 200))
+	})
+
 	// ── HTTP mux ─────────────────────────────────────────────────────────────
 	mux := http.NewServeMux()
 	srv.Register(mux)
@@ -174,4 +180,12 @@ func maskString(s string) string {
 		return "***"
 	}
 	return s[:4] + "***" + s[len(s)-4:]
+}
+
+// truncate returns s truncated to maxLen characters, with "..." appended if truncated.
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }

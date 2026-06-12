@@ -9,13 +9,14 @@ import (
 // Manager wraps the native BroSDK library and exposes a clean Go API.
 // It is safe to use from multiple goroutines.
 type Manager struct {
-	mu            sync.RWMutex
-	lib           nativeLib
-	listeners     []func(Event)
-	debugPorts    map[string]int         // envId → remoteDebuggingPort (from browser-open-success)
-	activeEnvID   string                // currently active browser environment (set by browser_select)
-	browsers      map[string]*browserTab // envId → chromedp resources
-	workDir       string                // base path for screenshots/PDFs output
+	mu              sync.RWMutex
+	lib             nativeLib
+	listeners       []func(Event)
+	cookieListeners []func(CookiesEvent)
+	debugPorts      map[string]int         // envId → remoteDebuggingPort (from browser-open-success)
+	activeEnvID     string                // currently active browser environment (set by browser_select)
+	browsers        map[string]*browserTab // envId → chromedp resources
+	workDir         string                // base path for screenshots/PDFs output
 }
 
 // NewManager creates an empty Manager. Call Load before any SDK operations.
@@ -28,7 +29,7 @@ func NewManager() *Manager {
 // Load loads the native library from the given file path and registers
 // the result callback. Supported on Windows and macOS.
 func (m *Manager) Load(path string) error {
-	lib, err := loadNative(path, m.emit)
+	lib, err := loadNative(path, m.emit, m.emitCookie)
 	if err != nil {
 		return err
 	}
@@ -49,6 +50,15 @@ func (m *Manager) Loaded() bool {
 func (m *Manager) OnEvent(fn func(Event)) {
 	m.mu.Lock()
 	m.listeners = append(m.listeners, fn)
+	m.mu.Unlock()
+}
+
+// OnCookies registers a listener for cookie storage interception events.
+// The listener receives the raw cookie JSON data whenever the SDK intercepts
+// cookie persistence operations.
+func (m *Manager) OnCookies(fn func(CookiesEvent)) {
+	m.mu.Lock()
+	m.cookieListeners = append(m.cookieListeners, fn)
 	m.mu.Unlock()
 }
 
@@ -265,6 +275,15 @@ func (m *Manager) emit(evt Event) {
 
 	m.mu.RLock()
 	ls := append([]func(Event){}, m.listeners...)
+	m.mu.RUnlock()
+	for _, fn := range ls {
+		fn(evt)
+	}
+}
+
+func (m *Manager) emitCookie(evt CookiesEvent) {
+	m.mu.RLock()
+	ls := append([]func(CookiesEvent){}, m.cookieListeners...)
 	m.mu.RUnlock()
 	for _, fn := range ls {
 		fn(evt)

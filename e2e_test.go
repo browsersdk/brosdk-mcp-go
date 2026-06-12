@@ -380,6 +380,9 @@ func (f *e2eFixture) cleanup() {
 		f.mgr.CloseAllBrowsers()
 	}
 	f.drainSSE()
+	// Give the SDK a moment to fully release browser resources (proxy
+	// connections, cookie flush, etc.) before the next test opens one.
+	time.Sleep(2 * time.Second)
 }
 
 // waitSSEEvent drains SSE events until one matches dataContains, or timeout.
